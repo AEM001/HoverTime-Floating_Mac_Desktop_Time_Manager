@@ -252,27 +252,27 @@ struct ControlPanelView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 10) {
                 modeSection
 
                 if manager.mode != .clock {
                     transportSection
                 }
 
-                glassSection("Common", systemImage: "slider.horizontal.3") {
-                    appearanceControls
-                }
-
                 glassSection(manager.mode.rawValue, systemImage: modeIcon) {
                     modeSpecificControls
+                }
+
+                glassSection("Common", systemImage: "slider.horizontal.3", compact: true) {
+                    appearanceControls
                 }
 
                 Button("Close") { onClose() }
                     .frame(maxWidth: .infinity)
                     .buttonStyle(.bordered)
-                    .controlSize(.large)
+                    .controlSize(.regular)
             }
-            .padding(20)
+            .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(.ultraThinMaterial)
@@ -280,7 +280,7 @@ struct ControlPanelView: View {
     }
 
     private var modeSection: some View {
-        glassSection("Mode", systemImage: "timer") {
+        VStack(alignment: .leading, spacing: 8) {
             Picker("", selection: $manager.mode) {
                 ForEach(TimeMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
@@ -288,16 +288,18 @@ struct ControlPanelView: View {
             .labelsHidden()
             .onChange(of: manager.mode) { _, _ in manager.saveSettings() }
         }
+        .padding(10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var transportSection: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Button(action: { manager.toggleStartPause() }) {
                 Label(isRunning ? "Pause" : "Start",
                       systemImage: isRunning ? "pause.fill" : "play.fill")
                     .frame(maxWidth: .infinity)
             }
-            .controlSize(.large)
+            .controlSize(.regular)
             .buttonStyle(.borderedProminent)
             .tint(isRunning ? .orange : .green)
 
@@ -305,77 +307,102 @@ struct ControlPanelView: View {
                 Label("Reset", systemImage: "arrow.counterclockwise")
                     .frame(minWidth: 72)
             }
-            .controlSize(.large)
+            .controlSize(.regular)
             .buttonStyle(.bordered)
         }
     }
 
     private var appearanceControls: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Font Size  \(Int(manager.fontSize))", systemImage: "textformat.size")
-                    .font(.subheadline)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Label("Size", systemImage: "textformat.size")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                HStack(spacing: 10) {
+                    .frame(width: 58, alignment: .leading)
+
+                HStack(spacing: 6) {
                     Button {
                         manager.fontSize = max(40, manager.fontSize - 4)
                         manager.saveSettings()
                     } label: {
                         Image(systemName: "minus")
-                            .frame(width: 28, height: 28)
+                            .frame(width: 20, height: 20)
                     }
                     .buttonStyle(.bordered)
+                    .controlSize(.small)
 
                     Slider(value: $manager.fontSize, in: 40...200, step: 2)
                         .onChange(of: manager.fontSize) { _, _ in manager.saveSettings() }
+
+                    Text("\(Int(manager.fontSize))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, alignment: .trailing)
 
                     Button {
                         manager.fontSize = min(200, manager.fontSize + 4)
                         manager.saveSettings()
                     } label: {
                         Image(systemName: "plus")
-                            .frame(width: 28, height: 28)
+                            .frame(width: 20, height: 20)
                     }
                     .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
             }
 
-            Picker("Typeface", selection: $manager.displayFont) {
-                ForEach(DisplayFont.allCases, id: \.self) { font in
-                    Text(font.rawValue).tag(font)
-                }
-            }
-            .pickerStyle(.menu)
-            .onChange(of: manager.displayFont) { _, _ in manager.saveSettings() }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Color", systemImage: "paintpalette")
-                    .font(.subheadline)
+            HStack(spacing: 10) {
+                Label("Font", systemImage: "textformat")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                HStack(spacing: 14) {
+                    .frame(width: 58, alignment: .leading)
+
+                Picker("", selection: $manager.displayFont) {
+                    ForEach(DisplayFont.allCases, id: \.self) { font in
+                        Text(font.rawValue).tag(font)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .onChange(of: manager.displayFont) { _, _ in manager.saveSettings() }
+            }
+
+            HStack(spacing: 10) {
+                Label("Color", systemImage: "paintpalette")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 58, alignment: .leading)
+
+                HStack(spacing: 9) {
                     ForEach(DisplayColor.allCases, id: \.self) { color in
                         Button(action: { manager.displayColor = color; manager.saveSettings() }) {
                             ZStack {
                                 Circle().fill(swatchColor(for: color))
-                                    .frame(width: 32, height: 32)
-                                    .shadow(color: swatchColor(for: color).opacity(0.45), radius: 5)
+                                    .frame(width: 18, height: 18)
+                                    .shadow(color: swatchColor(for: color).opacity(0.35), radius: 3)
                                 if manager.displayColor == color {
                                     Circle()
-                                        .stroke(Color.primary.opacity(0.8), lineWidth: 2.5)
-                                        .frame(width: 38, height: 38)
+                                        .stroke(.primary.opacity(0.72), lineWidth: 1.5)
+                                        .frame(width: 24, height: 24)
                                 }
                             }
+                            .frame(width: 28, height: 26)
                         }
                         .buttonStyle(.plain)
                         .help(color.rawValue)
                     }
                 }
+
+                Spacer(minLength: 0)
             }
 
-            Toggle("Background blur", isOn: $manager.showShadow)
-                .onChange(of: manager.showShadow) { _, _ in manager.saveSettings() }
-            Toggle("Click-through mode", isOn: $manager.clickThrough)
-                .onChange(of: manager.clickThrough) { _, _ in manager.saveSettings() }
+            HStack(spacing: 16) {
+                Toggle("Blur", isOn: $manager.showShadow)
+                    .onChange(of: manager.showShadow) { _, _ in manager.saveSettings() }
+                Toggle("Click-through", isOn: $manager.clickThrough)
+                    .onChange(of: manager.clickThrough) { _, _ in manager.saveSettings() }
+            }
+            .font(.caption)
         }
     }
 
@@ -455,21 +482,18 @@ struct ControlPanelView: View {
     private func glassSection<Content: View>(
         _ title: String,
         systemImage: String,
+        compact: Bool = false,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: compact ? 8 : 10) {
             Label(title, systemImage: systemImage)
-                .font(.headline)
-                .foregroundStyle(.primary.opacity(0.86))
+                .font(compact ? .subheadline.weight(.semibold) : .headline)
+                .foregroundStyle(.primary.opacity(0.82))
             content()
         }
-        .padding(14)
+        .padding(compact ? 10 : 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(.white.opacity(0.18), lineWidth: 1)
-        )
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var isRunning: Bool {
