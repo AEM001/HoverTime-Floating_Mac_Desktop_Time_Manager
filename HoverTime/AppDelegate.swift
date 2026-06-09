@@ -11,6 +11,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var panel: FloatingPanel?
     var timerManager: TimerManager?
     var cancellables = Set<AnyCancellable>()
+    private var saveTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
     }
@@ -49,11 +50,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
-        // Save settings periodically
-        Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self, weak manager] _ in
+        // Save settings periodically without creating unmanaged timers.
+        saveTimer?.invalidate()
+        saveTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self, weak manager] _ in
             manager?.saveSettings()
             self?.panel?.savePosition()
         }
+        saveTimer?.tolerance = 2
     }
 
     func togglePanel() {
@@ -85,6 +88,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        saveTimer?.invalidate()
         timerManager?.saveSettings()
         panel?.savePosition()
     }

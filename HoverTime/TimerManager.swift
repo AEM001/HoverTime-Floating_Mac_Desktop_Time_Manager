@@ -61,26 +61,44 @@ class TimerManager: ObservableObject {
     // MARK: - Sound
     @Published var soundEnabled: Bool = true
 
-    private var clockTimer: Timer?
-    private var countdownTimer: Timer?
-    private var stopwatchTimer: Timer?
+    private var displayTimer: Timer?
+    private var countdownEndDate: Date?
     private var stopwatchStartDate: Date?
     private var stopwatchAccumulated: TimeInterval = 0
+    private var lastCountdownWholeSeconds: Int?
+    private var lastStopwatchWholeSeconds: Int?
 
     init() {
         loadSettings()
-        startClockTimer()
+        startDisplayTimer()
         requestNotificationPermission()
     }
 
-    // MARK: - Clock
-
-    private func startClockTimer() {
-        let interval = showSeconds ? 0.5 : 1.0
-        clockTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            self?.currentTime = Date()
-        }
+    deinit {
+        displayTimer?.invalidate()
     }
+
+    // MARK: - Display Tick
+
+    private func startDisplayTimer() {
+        displayTimer?.invalidate()
+        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.refreshDisplayedTime()
+        }
+        timer.tolerance = 0.15
+        RunLoop.main.add(timer, forMode: .common)
+        displayTimer = timer
+        refreshDisplayedTime()
+    }
+
+    private func refreshDisplayedTime() {
+        let now = Date()
+        currentTime = now
+        updateCountdown(now: now)
+        updateStopwatch(now: now)
+    }
+
+    // MARK: - Clock
 
     var clockDisplayString: String {
         let formatter = DateFormatter()
@@ -101,33 +119,32 @@ class TimerManager: ObservableObject {
     // MARK: - Countdown
 
     func startCountdown() {
-        if countdownPaused {
-            countdownPaused = false
-        } else {
-            countdownRemaining = countdownTotal
+        if stopwatchRunning {
+            pauseStopwatch()
         }
+        let remaining = countdownPaused ? countdownRemaining : countdownTotal
+        countdownRemaining = max(0, remaining)
+        guard countdownRemaining > 0 else { return }
+        countdownEndDate = Date().addingTimeInterval(countdownRemaining)
+        lastCountdownWholeSeconds = Int(ceil(countdownRemaining))
         countdownRunning = true
-        countdownTimer?.invalidate()
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            if self.countdownRemaining > 0 {
-                self.countdownRemaining -= 1
-            } else {
-                self.countdownFinished()
-            }
-        }
+        countdownPaused = false
+        refreshDisplayedTime()
     }
 
     func pauseCountdown() {
+        updateCountdown(now: Date())
         countdownRunning = false
         countdownPaused = true
-        countdownTimer?.invalidate()
+        countdownEndDate = nil
+        lastCountdownWholeSeconds = nil
     }
 
     func resetCountdown() {
         countdownRunning = false
         countdownPaused = false
-        countdownTimer?.invalidate()
+        countdownEndDate = nil
+        lastCountdownWholeSeconds = nil
         countdownRemaining = countdownTotal
     }
 
@@ -136,13 +153,27 @@ class TimerManager: ObservableObject {
         resetCountdown()
     }
 
+    private func updateCountdown(now: Date) {
+        guard countdownRunning, let endDate = countdownEndDate else { return }
+        let remaining = max(0, endDate.timeIntervalSince(now))
+        let wholeSeconds = Int(ceil(remaining))
+        if wholeSeconds != lastCountdownWholeSeconds {
+            lastCountdownWholeSeconds = wholeSeconds
+            countdownRemaining = TimeInterval(wholeSeconds)
+        }
+        if remaining <= 0 {
+            countdownRemaining = 0
+            countdownFinished()
+        }
+    }
+
     private func countdownFinished() {
-        countdownTimer?.invalidate()
+        countdownEndDate = nil
+        lastCountdownWholeSeconds = nil
         countdownRunning = false
         countdownPaused = false
         playSound()
         sendNotification(title: "Countdown Complete", body: "Your timer has finished!")
-        StatsManager.shared.record(mode: "Countdown", duration: countdownTotal)
         if countdownAutoRepeat {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
                 self?.startCountdown()
@@ -158,34 +189,43 @@ class TimerManager: ObservableObject {
     // MARK: - Stopwatch
 
     func startStopwatch() {
+        if countdownRunning {
+            pauseCountdown()
+        }
+        guard !stopwatchRunning else { return }
         stopwatchRunning = true
         stopwatchStartDate = Date()
-        stopwatchTimer?.invalidate()
-        stopwatchTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self = self, let start = self.stopwatchStartDate else { return }
-            self.stopwatchElapsed = self.stopwatchAccumulated + Date().timeIntervalSince(start)
-        }
+        lastStopwatchWholeSeconds = Int(stopwatchElapsed)
+        refreshDisplayedTime()
     }
 
     func pauseStopwatch() {
+        updateStopwatch(now: Date())
         stopwatchRunning = false
         if let start = stopwatchStartDate {
             stopwatchAccumulated += Date().timeIntervalSince(start)
         }
         stopwatchStartDate = nil
-        stopwatchTimer?.invalidate()
         stopwatchElapsed = stopwatchAccumulated
+        lastStopwatchWholeSeconds = nil
     }
 
     func resetStopwatch() {
         stopwatchRunning = false
-        stopwatchTimer?.invalidate()
         stopwatchStartDate = nil
-        if stopwatchAccumulated >= 1 {
-            StatsManager.shared.record(mode: "Stopwatch", duration: stopwatchAccumulated)
-        }
+        lastStopwatchWholeSeconds = nil
         stopwatchAccumulated = 0
         stopwatchElapsed = 0
+    }
+
+    private func updateStopwatch(now: Date) {
+        guard stopwatchRunning, let start = stopwatchStartDate else { return }
+        let elapsed = stopwatchAccumulated + now.timeIntervalSince(start)
+        let wholeSeconds = Int(elapsed)
+        if wholeSeconds != lastStopwatchWholeSeconds {
+            lastStopwatchWholeSeconds = wholeSeconds
+            stopwatchElapsed = elapsed
+        }
     }
 
     var stopwatchDisplayString: String {
@@ -199,10 +239,7 @@ class TimerManager: ObservableObject {
             }
             return String(format: "%02d:%02d", m, s)
         } else {
-            if h > 0 {
-                return String(format: "%d:%02d", h, m)
-            }
-            return String(format: "%02d min", m)
+            return String(format: "%02d:%02d", h, m)
         }
     }
 

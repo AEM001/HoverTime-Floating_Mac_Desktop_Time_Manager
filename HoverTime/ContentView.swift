@@ -11,8 +11,8 @@ import AppKit
 class ControlPanelWindow: NSPanel {
     init() {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 400),
-            styleMask: [.titled, .closable, .fullSizeContentView],
+            contentRect: NSRect(x: 0, y: 0, width: 430, height: 560),
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -22,6 +22,7 @@ class ControlPanelWindow: NSPanel {
         isMovableByWindowBackground = true
         level = .floating
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        minSize = NSSize(width: 360, height: 360)
     }
 }
 
@@ -141,8 +142,9 @@ class ControlWindowManager: NSObject {
             hostingController = controller
         }
         if let screen = NSScreen.main {
-            let x = screen.visibleFrame.midX - 160
-            let y = screen.visibleFrame.midY - 200
+            let frame = window?.frame ?? NSRect(x: 0, y: 0, width: 430, height: 560)
+            let x = screen.visibleFrame.midX - frame.width / 2
+            let y = screen.visibleFrame.midY - frame.height / 2
             window?.setFrameOrigin(NSPoint(x: x, y: y))
         }
         window?.makeKeyAndOrderFront(nil)
@@ -226,7 +228,9 @@ struct ControlPanelView: View {
             set: { h in
                 let m = Int(manager.countdownTotal.truncatingRemainder(dividingBy: 3600) / 60)
                 manager.countdownTotal = TimeInterval(h * 3600 + m * 60)
-                manager.countdownRemaining = manager.countdownTotal
+                if !manager.countdownRunning && !manager.countdownPaused {
+                    manager.countdownRemaining = manager.countdownTotal
+                }
                 manager.saveSettings()
             }
         )
@@ -238,87 +242,80 @@ struct ControlPanelView: View {
             set: { m in
                 let h = Int(manager.countdownTotal / 3600)
                 manager.countdownTotal = TimeInterval(h * 3600 + m * 60)
-                manager.countdownRemaining = manager.countdownTotal
+                if !manager.countdownRunning && !manager.countdownPaused {
+                    manager.countdownRemaining = manager.countdownTotal
+                }
                 manager.saveSettings()
             }
         )
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                modeSection
 
-            // Mode
-            VStack(alignment: .leading, spacing: 6) {
-                Label("Mode", systemImage: "timer").font(.subheadline).foregroundStyle(.secondary)
-                Picker("", selection: $manager.mode) {
-                    ForEach(TimeMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                if manager.mode != .clock {
+                    transportSection
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
 
-            // Start / Pause / Reset
-            if manager.mode != .clock {
-                HStack(spacing: 12) {
-                    Button(action: { manager.toggleStartPause() }) {
-                        Label(isRunning ? "Pause" : "Start",
-                              systemImage: isRunning ? "pause.fill" : "play.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .controlSize(.large)
-                    .buttonStyle(.borderedProminent)
-                    .tint(isRunning ? .orange : .green)
+                glassSection("Common", systemImage: "slider.horizontal.3") {
+                    appearanceControls
+                }
 
-                    Button(action: { manager.resetCurrent() }) {
-                        Label("Reset", systemImage: "arrow.counterclockwise")
-                    }
-                    .controlSize(.large)
+                glassSection(manager.mode.rawValue, systemImage: modeIcon) {
+                    modeSpecificControls
+                }
+
+                Button("Close") { onClose() }
+                    .frame(maxWidth: .infinity)
                     .buttonStyle(.bordered)
-                }
+                    .controlSize(.large)
             }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(.ultraThinMaterial)
+        .frame(minWidth: 360, minHeight: 360)
+    }
 
-            // Countdown time input (idle only)
-            if manager.mode == .countdown && !manager.countdownRunning && !manager.countdownPaused {
-                VStack(alignment: .leading, spacing: 10) {
-                    Label("Set Time", systemImage: "clock").font(.subheadline).foregroundStyle(.secondary)
-                    
-                    HStack(spacing: 20) {
-                        TimePickerField(
-                            label: "Hours",
-                            value: countdownHours,
-                            options: Array(0...23),
-                            suffix: "h"
-                        )
-                        
-                        Text(":").font(.title).foregroundStyle(.secondary)
-                        
-                        TimePickerField(
-                            label: "Minutes",
-                            value: countdownMinutes,
-                            options: [0, 15, 30, 45],
-                            suffix: "m"
-                        )
-                    }
-                    
-                    Text("Presets").font(.caption).foregroundStyle(.secondary)
-                    HStack(spacing: 6) {
-                        ForEach([5, 15, 25, 45, 60], id: \.self) { mins in
-                            Button("\(mins)m") {
-                                manager.setCountdownPreset(mins)
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
-                    }
-                }
+    private var modeSection: some View {
+        glassSection("Mode", systemImage: "timer") {
+            Picker("", selection: $manager.mode) {
+                ForEach(TimeMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .onChange(of: manager.mode) { _, _ in manager.saveSettings() }
+        }
+    }
 
-            Divider()
+    private var transportSection: some View {
+        HStack(spacing: 12) {
+            Button(action: { manager.toggleStartPause() }) {
+                Label(isRunning ? "Pause" : "Start",
+                      systemImage: isRunning ? "pause.fill" : "play.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .controlSize(.large)
+            .buttonStyle(.borderedProminent)
+            .tint(isRunning ? .orange : .green)
 
-            // Font size
+            Button(action: { manager.resetCurrent() }) {
+                Label("Reset", systemImage: "arrow.counterclockwise")
+                    .frame(minWidth: 72)
+            }
+            .controlSize(.large)
+            .buttonStyle(.bordered)
+        }
+    }
+
+    private var appearanceControls: some View {
+        VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Font Size  \(Int(manager.fontSize))", systemImage: "textformat.size")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                 HStack(spacing: 10) {
                     Button {
                         manager.fontSize = max(40, manager.fontSize - 4)
@@ -343,16 +340,25 @@ struct ControlPanelView: View {
                 }
             }
 
-            // Color
+            Picker("Typeface", selection: $manager.displayFont) {
+                ForEach(DisplayFont.allCases, id: \.self) { font in
+                    Text(font.rawValue).tag(font)
+                }
+            }
+            .pickerStyle(.menu)
+            .onChange(of: manager.displayFont) { _, _ in manager.saveSettings() }
+
             VStack(alignment: .leading, spacing: 8) {
-                Label("Color", systemImage: "paintpalette").font(.subheadline).foregroundStyle(.secondary)
+                Label("Color", systemImage: "paintpalette")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                 HStack(spacing: 14) {
                     ForEach(DisplayColor.allCases, id: \.self) { color in
                         Button(action: { manager.displayColor = color; manager.saveSettings() }) {
                             ZStack {
                                 Circle().fill(swatchColor(for: color))
                                     .frame(width: 32, height: 32)
-                                    .shadow(color: swatchColor(for: color).opacity(0.6), radius: 4)
+                                    .shadow(color: swatchColor(for: color).opacity(0.45), radius: 5)
                                 if manager.displayColor == color {
                                     Circle()
                                         .stroke(Color.primary.opacity(0.8), lineWidth: 2.5)
@@ -366,16 +372,104 @@ struct ControlPanelView: View {
                 }
             }
 
-            Spacer()
-
-            Button("Close") { onClose() }
-                .frame(maxWidth: .infinity)
-                .buttonStyle(.bordered)
-                .controlSize(.large)
+            Toggle("Background blur", isOn: $manager.showShadow)
+                .onChange(of: manager.showShadow) { _, _ in manager.saveSettings() }
+            Toggle("Click-through mode", isOn: $manager.clickThrough)
+                .onChange(of: manager.clickThrough) { _, _ in manager.saveSettings() }
         }
-        .padding(20)
-        .frame(width: 340, height: 460)
-        .fixedSize()
+    }
+
+    @ViewBuilder
+    private var modeSpecificControls: some View {
+        switch manager.mode {
+        case .clock:
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("24-hour format", isOn: $manager.use24Hour)
+                Toggle("Show seconds", isOn: $manager.showSeconds)
+                Toggle("Show date", isOn: $manager.showDate)
+            }
+            .onChange(of: manager.use24Hour) { _, _ in manager.saveSettings() }
+            .onChange(of: manager.showSeconds) { _, _ in manager.saveSettings() }
+            .onChange(of: manager.showDate) { _, _ in manager.saveSettings() }
+
+        case .countdown:
+            countdownControls
+
+        case .stopwatch:
+            Toggle("Show seconds", isOn: $manager.stopwatchShowSeconds)
+                .onChange(of: manager.stopwatchShowSeconds) { _, _ in manager.saveSettings() }
+        }
+    }
+
+    private var countdownControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if manager.countdownRunning || manager.countdownPaused {
+                HStack {
+                    Text("Remaining")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(TimerManager.formatTime(manager.countdownRemaining))
+                        .font(.system(.body, design: .monospaced))
+                }
+            } else {
+                HStack(spacing: 18) {
+                    TimePickerField(label: "Hours", value: countdownHours, options: Array(0...23), suffix: "h")
+                    Text(":").font(.title2).foregroundStyle(.secondary)
+                    TimePickerField(label: "Minutes", value: countdownMinutes, options: Array(0...59), suffix: "m")
+                    Spacer(minLength: 0)
+                }
+            }
+
+            ViewThatFits {
+                HStack(spacing: 8) { presetButtons }
+                VStack(alignment: .leading, spacing: 8) { presetButtons }
+            }
+
+            Toggle("Auto-repeat", isOn: $manager.countdownAutoRepeat)
+                .onChange(of: manager.countdownAutoRepeat) { _, _ in manager.saveSettings() }
+            Toggle("Sound notifications", isOn: $manager.soundEnabled)
+                .onChange(of: manager.soundEnabled) { _, _ in manager.saveSettings() }
+        }
+    }
+
+    private var presetButtons: some View {
+        ForEach([5, 15, 25, 45, 60], id: \.self) { mins in
+            Button("\(mins)m") {
+                manager.setCountdownPreset(mins)
+                manager.saveSettings()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(manager.countdownRunning)
+        }
+    }
+
+    private var modeIcon: String {
+        switch manager.mode {
+        case .clock: return "clock"
+        case .countdown: return "timer"
+        case .stopwatch: return "stopwatch"
+        }
+    }
+
+    private func glassSection<Content: View>(
+        _ title: String,
+        systemImage: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+                .foregroundStyle(.primary.opacity(0.86))
+            content()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(.white.opacity(0.18), lineWidth: 1)
+        )
     }
 
     private var isRunning: Bool {

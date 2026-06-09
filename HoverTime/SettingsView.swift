@@ -14,7 +14,9 @@ struct SettingsView: View {
             set: { h in
                 let m = Int(manager.countdownTotal.truncatingRemainder(dividingBy: 3600) / 60)
                 manager.countdownTotal = TimeInterval(h * 3600 + m * 60)
-                manager.countdownRemaining = manager.countdownTotal
+                if !manager.countdownRunning && !manager.countdownPaused {
+                    manager.countdownRemaining = manager.countdownTotal
+                }
             }
         )
     }
@@ -25,7 +27,9 @@ struct SettingsView: View {
             set: { m in
                 let h = Int(manager.countdownTotal / 3600)
                 manager.countdownTotal = TimeInterval(h * 3600 + m * 60)
-                manager.countdownRemaining = manager.countdownTotal
+                if !manager.countdownRunning && !manager.countdownPaused {
+                    manager.countdownRemaining = manager.countdownTotal
+                }
             }
         )
     }
@@ -159,8 +163,7 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                 ForEach([5, 10, 25, 45, 60], id: \.self) { mins in
                     Button("\(mins)m") {
-                        manager.countdownTotal = TimeInterval(mins * 60)
-                        manager.countdownRemaining = manager.countdownTotal
+                        manager.setCountdownPreset(mins)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
