@@ -21,15 +21,6 @@ struct MenuBarView: View {
 
         Divider()
 
-        // Mode selection
-        Picker("Mode", selection: $manager.mode) {
-            ForEach(TimeMode.allCases, id: \.self) { mode in
-                Text(mode.rawValue).tag(mode)
-            }
-        }
-
-        Divider()
-
         if manager.mode != .clock {
             Button(isRunning ? "Pause" : "Start") {
                 manager.toggleStartPause()
@@ -43,22 +34,6 @@ struct MenuBarView: View {
 
             Divider()
         }
-
-        Menu("Font Size: \(Int(manager.fontSize))") {
-            Button("Increase") {
-                manager.fontSize = min(200, manager.fontSize + 4)
-                manager.saveSettings()
-            }
-            .keyboardShortcut("+")
-
-            Button("Decrease") {
-                manager.fontSize = max(40, manager.fontSize - 4)
-                manager.saveSettings()
-            }
-            .keyboardShortcut("-")
-        }
-
-        Divider()
 
         Button("Open HoverTime...") {
             openWindow(id: "main")
