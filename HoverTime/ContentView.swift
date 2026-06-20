@@ -32,42 +32,37 @@ struct ContentView: View {
     @ObservedObject var manager: TimerManager
 
     var body: some View {
-        ZStack {
-            if manager.showShadow {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(.regularMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                    )
-                    .opacity(0.72)
-            }
-
+        VStack(spacing: manager.reminderIsActive ? 4 : 2) {
             if manager.reminderIsActive {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(tintColor.opacity(0.58), lineWidth: 1.5)
-                    .scaleEffect(1.08)
-                    .opacity(0.65)
-                    .transition(.opacity.combined(with: .scale))
+                HStack(spacing: 6) {
+                    Image(systemName: "eye.fill")
+                        .font(.system(size: 12, weight: .bold))
+                    Text("LOOK UP")
+                        .font(.system(size: 12, weight: .black, design: .rounded))
+                }
+                .foregroundStyle(.black)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                .background(reminderColor, in: Capsule())
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            VStack(spacing: 2) {
-                switch manager.mode {
-                case .clock:     clockView
-                case .countdown: countdownView
-                case .stopwatch: stopwatchView
-                }
+            switch manager.mode {
+            case .clock:     clockView
+            case .countdown: countdownView
+            case .stopwatch: stopwatchView
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
         }
+        .padding(.horizontal, manager.reminderIsActive ? 18 : 12)
+        .padding(.vertical, manager.reminderIsActive ? 8 : 4)
+        .background(panelBackground)
+        .overlay(reminderOverlay)
+        .contentShape(Rectangle())
         .background(Color.black.opacity(0.001))
-        .scaleEffect(manager.reminderIsActive ? 1.025 : 1)
-        .animation(.easeInOut(duration: 0.65).repeatCount(4, autoreverses: true), value: manager.reminderPulseID)
+        .scaleEffect(manager.reminderIsActive ? 1.08 : 1)
+        .animation(.easeInOut(duration: 0.48).repeatCount(8, autoreverses: true), value: manager.reminderPulseID)
         .animation(.easeOut(duration: 0.2), value: manager.reminderIsActive)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .frame(minWidth: 160, minHeight: 44)
+        .fixedSize()
     }
 
     // MARK: - Color & Font Helpers
@@ -75,13 +70,50 @@ struct ContentView: View {
     var tintColor: Color {
         switch manager.displayColor {
         case .porcelain: return Color(red: 0.92, green: 0.90, blue: 0.84)
-        case .graphite: return Color(red: 0.70, green: 0.72, blue: 0.70)
-        case .sage: return Color(red: 0.66, green: 0.73, blue: 0.66)
-        case .copper: return Color(red: 0.76, green: 0.55, blue: 0.41)
+        case .graphite: return Color(red: 0.76, green: 0.78, blue: 0.76)
+        case .sage: return Color(red: 0.68, green: 0.76, blue: 0.67)
+        case .frost: return Color(red: 0.62, green: 0.74, blue: 0.82)
         }
     }
 
-    private var glowColor: Color { tintColor.opacity(0.18) }
+    private var glowColor: Color { tintColor.opacity(0.22) }
+    private var reminderColor: Color { Color(red: 1.0, green: 0.80, blue: 0.18) }
+
+    private var panelBackground: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.black.opacity(manager.showShadow ? 0.055 : 0.025))
+
+            if manager.showShadow {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(.regularMaterial)
+                    .opacity(0.72)
+            }
+
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.8)
+
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.black.opacity(0.10), lineWidth: 0.8)
+                .blendMode(.multiply)
+        }
+        .shadow(color: Color.black.opacity(0.16), radius: 10, x: 0, y: 2)
+        .shadow(color: Color.white.opacity(0.14), radius: 5, x: 0, y: 0)
+    }
+
+    @ViewBuilder
+    private var reminderOverlay: some View {
+        if manager.reminderIsActive {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(reminderColor.opacity(0.16))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(reminderColor.opacity(0.92), lineWidth: 3)
+                )
+                .shadow(color: reminderColor.opacity(0.55), radius: 18, x: 0, y: 0)
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        }
+    }
 
     func timeFont(size: CGFloat) -> Font {
         switch manager.displayFont {
@@ -99,12 +131,15 @@ struct ContentView: View {
             Text(manager.clockDisplayString)
                 .font(timeFont(size: manager.fontSize))
                 .foregroundStyle(tintColor)
-                .shadow(color: glowColor, radius: manager.reminderIsActive ? 12 : 4, x: 0, y: 0)
-                .shadow(color: .black.opacity(0.32), radius: 1.5, x: 0, y: 1)
+                .shadow(color: .white.opacity(0.30), radius: 1.0, x: 0, y: 0)
+                .shadow(color: glowColor, radius: manager.reminderIsActive ? 14 : 5, x: 0, y: 0)
+                .shadow(color: .black.opacity(0.58), radius: 2.0, x: 0, y: 1)
             if manager.showDate {
                 Text(manager.dateDisplayString)
                     .font(timeFont(size: manager.fontSize * 0.3))
                     .foregroundStyle(tintColor.opacity(0.68))
+                    .shadow(color: .white.opacity(0.22), radius: 0.8, x: 0, y: 0)
+                    .shadow(color: .black.opacity(0.42), radius: 1.5, x: 0, y: 1)
             }
         }
     }
@@ -115,8 +150,9 @@ struct ContentView: View {
         Text(TimerManager.formatTime(manager.countdownRemaining, showSeconds: manager.showSeconds))
             .font(timeFont(size: manager.fontSize))
             .foregroundStyle(tintColor)
-            .shadow(color: glowColor, radius: manager.reminderIsActive ? 12 : 4, x: 0, y: 0)
-            .shadow(color: .black.opacity(0.32), radius: 1.5, x: 0, y: 1)
+            .shadow(color: .white.opacity(0.30), radius: 1.0, x: 0, y: 0)
+            .shadow(color: glowColor, radius: manager.reminderIsActive ? 14 : 5, x: 0, y: 0)
+            .shadow(color: .black.opacity(0.58), radius: 2.0, x: 0, y: 1)
     }
 
     // MARK: - Stopwatch View
@@ -125,8 +161,9 @@ struct ContentView: View {
         Text(manager.stopwatchDisplayString)
             .font(timeFont(size: manager.fontSize))
             .foregroundStyle(tintColor)
-            .shadow(color: glowColor, radius: manager.reminderIsActive ? 12 : 4, x: 0, y: 0)
-            .shadow(color: .black.opacity(0.32), radius: 1.5, x: 0, y: 1)
+            .shadow(color: .white.opacity(0.30), radius: 1.0, x: 0, y: 0)
+            .shadow(color: glowColor, radius: manager.reminderIsActive ? 14 : 5, x: 0, y: 0)
+            .shadow(color: .black.opacity(0.58), radius: 2.0, x: 0, y: 1)
     }
 }
 
@@ -413,7 +450,7 @@ struct ControlPanelView: View {
 
             Divider()
 
-            Toggle("Reminder pulse", isOn: $manager.reminderEnabled)
+            Toggle("Visual interval reminder", isOn: $manager.reminderEnabled)
                 .onChange(of: manager.reminderEnabled) { _, _ in
                     manager.rescheduleReminder()
                     manager.saveSettings()
@@ -424,6 +461,9 @@ struct ControlPanelView: View {
                         manager.rescheduleReminder()
                         manager.saveSettings()
                     }
+                Text("Counts from app launch, or from the moment you enable/change this setting.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
             Toggle("Show in Dock", isOn: $manager.showDockIcon)
                 .onChange(of: manager.showDockIcon) { _, _ in manager.saveSettings() }
@@ -530,9 +570,9 @@ struct ControlPanelView: View {
     private func swatchColor(for color: DisplayColor) -> Color {
         switch color {
         case .porcelain: return Color(red: 0.92, green: 0.90, blue: 0.84)
-        case .graphite: return Color(red: 0.70, green: 0.72, blue: 0.70)
-        case .sage: return Color(red: 0.66, green: 0.73, blue: 0.66)
-        case .copper: return Color(red: 0.76, green: 0.55, blue: 0.41)
+        case .graphite: return Color(red: 0.76, green: 0.78, blue: 0.76)
+        case .sage: return Color(red: 0.68, green: 0.76, blue: 0.67)
+        case .frost: return Color(red: 0.62, green: 0.74, blue: 0.82)
         }
     }
 

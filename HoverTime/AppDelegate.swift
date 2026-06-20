@@ -78,6 +78,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
+        manager.$reminderActiveUntil
+            .sink { [weak self, weak floatingPanel, weak manager] _ in
+                guard let floatingPanel, let manager else { return }
+                self?.resizePanel(floatingPanel, for: manager)
+            }
+            .store(in: &cancellables)
+
         manager.$showDockIcon
             .removeDuplicates()
             .sink { [weak self] value in
@@ -142,11 +149,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func resizePanel(_ panel: FloatingPanel, for manager: TimerManager) {
         let size = manager.fontSize
-        let widthMultiplier: CGFloat = manager.showSeconds ? 5.65 : 4.05
         let dateExtra: CGFloat = manager.mode == .clock && manager.showDate ? size * 0.34 : 0
-        let width = max(190, size * widthMultiplier)
-        let height = max(52, size * 1.18 + dateExtra)
+        let reminderExtra: CGFloat = manager.reminderIsActive ? 34 : 0
+        let horizontalPadding: CGFloat = manager.reminderIsActive ? 36 : 24
+        let measuredWidth = measuredDisplayWidth(for: manager)
+        let reminderWidth: CGFloat = manager.reminderIsActive ? 98 : 0
+        let width = ceil(max(measuredWidth, reminderWidth) + horizontalPadding)
+        let height = max(52, size * 1.18 + dateExtra + reminderExtra)
         panel.setContentSize(NSSize(width: width, height: height))
+    }
+
+    private func measuredDisplayWidth(for manager: TimerManager) -> CGFloat {
+        let text: String
+        switch manager.mode {
+        case .clock:
+            text = manager.clockDisplayString
+        case .countdown:
+            text = TimerManager.formatTime(manager.countdownRemaining, showSeconds: manager.showSeconds)
+        case .stopwatch:
+            text = manager.stopwatchDisplayString
+        }
+
+        let font = displayNSFont(for: manager)
+        return (text as NSString).size(withAttributes: [.font: font]).width
+    }
+
+    private func displayNSFont(for manager: TimerManager) -> NSFont {
+        let size = manager.fontSize
+        switch manager.displayFont {
+        case .newYork:
+            return NSFont.systemFont(ofSize: size, weight: .semibold)
+        case .sfProHeavy:
+            return NSFont.systemFont(ofSize: size, weight: .semibold)
+        case .impact:
+            return NSFont(name: "Impact", size: size) ?? NSFont.systemFont(ofSize: size, weight: .semibold)
+        case .arialBlack:
+            return NSFont(name: "Arial-BoldMT", size: size) ?? NSFont.systemFont(ofSize: size, weight: .semibold)
+        }
     }
 }
 

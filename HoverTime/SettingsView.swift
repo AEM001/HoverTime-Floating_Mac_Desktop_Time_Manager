@@ -205,11 +205,14 @@ struct SettingsView: View {
         settingsSection("General") {
             Toggle("Sound notifications", isOn: $manager.soundEnabled)
             Toggle("Click-through mode", isOn: $manager.clickThrough)
-            Toggle("Reminder pulse", isOn: $manager.reminderEnabled)
+            Toggle("Visual interval reminder", isOn: $manager.reminderEnabled)
                 .onChange(of: manager.reminderEnabled) { _, _ in manager.rescheduleReminder() }
             if manager.reminderEnabled {
                 Stepper("Reminder interval: \(manager.reminderIntervalMinutes) min", value: $manager.reminderIntervalMinutes, in: 1...120, step: 1)
                     .onChange(of: manager.reminderIntervalMinutes) { _, _ in manager.rescheduleReminder() }
+                Text("Counts from app launch, or from the moment you enable/change this setting. The floating timer shows a bright visual banner for 8 seconds.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Toggle("Show in Dock", isOn: $manager.showDockIcon)
 
@@ -253,9 +256,9 @@ struct SettingsView: View {
     private func swatchColor(for color: DisplayColor) -> Color {
         switch color {
         case .porcelain: return Color(red: 0.92, green: 0.90, blue: 0.84)
-        case .graphite: return Color(red: 0.70, green: 0.72, blue: 0.70)
-        case .sage: return Color(red: 0.66, green: 0.73, blue: 0.66)
-        case .copper: return Color(red: 0.76, green: 0.55, blue: 0.41)
+        case .graphite: return Color(red: 0.76, green: 0.78, blue: 0.76)
+        case .sage: return Color(red: 0.68, green: 0.76, blue: 0.67)
+        case .frost: return Color(red: 0.62, green: 0.74, blue: 0.82)
         }
     }
 

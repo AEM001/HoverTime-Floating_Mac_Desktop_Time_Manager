@@ -18,7 +18,7 @@ enum DisplayColor: String, CaseIterable {
     case porcelain = "Porcelain"
     case graphite = "Graphite"
     case sage = "Sage"
-    case copper = "Copper"
+    case frost = "Frost"
 }
 
 enum DisplayFont: String, CaseIterable {
@@ -287,7 +287,7 @@ class TimerManager: ObservableObject {
 
         guard let next = nextReminderDate, now >= next else { return }
         reminderPulseID += 1
-        reminderActiveUntil = now.addingTimeInterval(5)
+        reminderActiveUntil = now.addingTimeInterval(8)
         rescheduleReminder(from: now)
     }
 
@@ -400,8 +400,12 @@ class TimerManager: ObservableObject {
             if let modeStr = d.string(forKey: "timeMode"), let m = TimeMode(rawValue: modeStr) {
                 mode = m
             }
-            if let colorStr = d.string(forKey: "displayColor"), let c = DisplayColor(rawValue: colorStr) {
-                displayColor = c
+            if let colorStr = d.string(forKey: "displayColor") {
+                if let c = DisplayColor(rawValue: colorStr) {
+                    displayColor = c
+                } else if colorStr == "Copper" {
+                    displayColor = .frost
+                }
             }
             if let fontStr = d.string(forKey: "displayFont"), let f = DisplayFont(rawValue: fontStr) {
                 displayFont = f
