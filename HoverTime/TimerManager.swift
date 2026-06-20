@@ -15,10 +15,10 @@ enum TimeMode: String, CaseIterable {
 }
 
 enum DisplayColor: String, CaseIterable {
-    case white = "White"
-    case amber = "Amber"
-    case cyan = "Cyan"
-    case rose = "Rose"
+    case porcelain = "Porcelain"
+    case graphite = "Graphite"
+    case sage = "Sage"
+    case copper = "Copper"
 }
 
 enum DisplayFont: String, CaseIterable {
@@ -48,18 +48,26 @@ class TimerManager: ObservableObject {
     // MARK: - Stopwatch
     @Published var stopwatchElapsed: TimeInterval = 0
     @Published var stopwatchRunning: Bool = false
-    @Published var stopwatchShowSeconds: Bool = true
 
     // MARK: - Appearance
-    @Published var fontSize: CGFloat = 64
+    @Published var fontSize: CGFloat = 65
     @Published var windowOpacity: Double = 1.0
     @Published var showShadow: Bool = false
     @Published var clickThrough: Bool = false
-    @Published var displayColor: DisplayColor = .cyan
+    @Published var displayColor: DisplayColor = .sage
     @Published var displayFont: DisplayFont = .newYork
 
     // MARK: - Sound
     @Published var soundEnabled: Bool = true
+
+    // MARK: - Reminder
+    @Published var reminderEnabled: Bool = false
+    @Published var reminderIntervalMinutes: Int = 5
+    @Published var reminderPulseID: Int = 0
+    @Published var reminderActiveUntil: Date?
+
+    // MARK: - App
+    @Published var showDockIcon: Bool = true
 
     private var displayTimer: Timer?
     private var countdownEndDate: Date?
@@ -67,6 +75,7 @@ class TimerManager: ObservableObject {
     private var stopwatchAccumulated: TimeInterval = 0
     private var lastCountdownWholeSeconds: Int?
     private var lastStopwatchWholeSeconds: Int?
+    private var nextReminderDate: Date?
 
     init() {
         loadSettings()
@@ -96,6 +105,7 @@ class TimerManager: ObservableObject {
         currentTime = now
         updateCountdown(now: now)
         updateStopwatch(now: now)
+        updateReminder(now: now)
     }
 
     // MARK: - Clock
@@ -233,7 +243,7 @@ class TimerManager: ObservableObject {
         let h = total / 3600
         let m = (total % 3600) / 60
         let s = total % 60
-        if stopwatchShowSeconds {
+        if showSeconds {
             if h > 0 {
                 return String(format: "%d:%02d:%02d", h, m, s)
             }
@@ -241,6 +251,44 @@ class TimerManager: ObservableObject {
         } else {
             return String(format: "%02d:%02d", h, m)
         }
+    }
+
+    // MARK: - Reminder
+
+    var reminderIsActive: Bool {
+        guard let activeUntil = reminderActiveUntil else { return false }
+        return activeUntil > Date()
+    }
+
+    func rescheduleReminder(from date: Date = Date()) {
+        guard reminderEnabled else {
+            nextReminderDate = nil
+            reminderActiveUntil = nil
+            return
+        }
+        let minutes = max(1, reminderIntervalMinutes)
+        nextReminderDate = date.addingTimeInterval(TimeInterval(minutes * 60))
+    }
+
+    private func updateReminder(now: Date) {
+        guard reminderEnabled else {
+            nextReminderDate = nil
+            reminderActiveUntil = nil
+            return
+        }
+
+        if nextReminderDate == nil {
+            rescheduleReminder(from: now)
+        }
+
+        if let activeUntil = reminderActiveUntil, activeUntil <= now {
+            reminderActiveUntil = nil
+        }
+
+        guard let next = nextReminderDate, now >= next else { return }
+        reminderPulseID += 1
+        reminderActiveUntil = now.addingTimeInterval(5)
+        rescheduleReminder(from: now)
     }
 
     // MARK: - Toggle / Shortcuts
@@ -281,11 +329,14 @@ class TimerManager: ObservableObject {
 
     // MARK: - Helpers
 
-    static func formatTime(_ interval: TimeInterval) -> String {
+    static func formatTime(_ interval: TimeInterval, showSeconds: Bool = true) -> String {
         let total = max(0, Int(interval))
         let h = total / 3600
         let m = (total % 3600) / 60
         let s = total % 60
+        if !showSeconds {
+            return String(format: "%02d:%02d", h, m)
+        }
         if h > 0 {
             return String(format: "%d:%02d:%02d", h, m, s)
         }
@@ -322,12 +373,14 @@ class TimerManager: ObservableObject {
         d.set(showShadow, forKey: "showShadow")
         d.set(clickThrough, forKey: "clickThrough")
         d.set(soundEnabled, forKey: "soundEnabled")
-        d.set(stopwatchShowSeconds, forKey: "stopwatchShowSeconds")
         d.set(countdownAutoRepeat, forKey: "countdownAutoRepeat")
         d.set(countdownTotal, forKey: "countdownTotal")
         d.set(mode.rawValue, forKey: "timeMode")
         d.set(displayColor.rawValue, forKey: "displayColor")
         d.set(displayFont.rawValue, forKey: "displayFont")
+        d.set(reminderEnabled, forKey: "reminderEnabled")
+        d.set(reminderIntervalMinutes, forKey: "reminderIntervalMinutes")
+        d.set(showDockIcon, forKey: "showDockIcon")
     }
 
     private func loadSettings() {
@@ -341,9 +394,6 @@ class TimerManager: ObservableObject {
             showShadow = d.bool(forKey: "showShadow")
             clickThrough = d.bool(forKey: "clickThrough")
             soundEnabled = d.bool(forKey: "soundEnabled")
-            if d.object(forKey: "stopwatchShowSeconds") != nil {
-                stopwatchShowSeconds = d.bool(forKey: "stopwatchShowSeconds")
-            }
             countdownAutoRepeat = d.bool(forKey: "countdownAutoRepeat")
             countdownTotal = d.double(forKey: "countdownTotal")
             countdownRemaining = countdownTotal
@@ -356,9 +406,33 @@ class TimerManager: ObservableObject {
             if let fontStr = d.string(forKey: "displayFont"), let f = DisplayFont(rawValue: fontStr) {
                 displayFont = f
             }
-            if fontSize < 40 { fontSize = 64 }
+            if d.object(forKey: "reminderEnabled") != nil {
+                reminderEnabled = d.bool(forKey: "reminderEnabled")
+            }
+            if d.object(forKey: "reminderIntervalMinutes") != nil {
+                reminderIntervalMinutes = d.integer(forKey: "reminderIntervalMinutes")
+            }
+            if d.object(forKey: "showDockIcon") != nil {
+                showDockIcon = d.bool(forKey: "showDockIcon")
+            }
+            if fontSize < 40 { fontSize = 65 }
             if windowOpacity <= 0 { windowOpacity = 1.0 }
             if countdownTotal <= 0 { countdownTotal = 25 * 60; countdownRemaining = countdownTotal }
+            if reminderIntervalMinutes < 1 { reminderIntervalMinutes = 5 }
         }
+        fontSize = roundedFontSize(fontSize)
+        countdownTotal = roundedCountdownDuration(countdownTotal)
+        countdownRemaining = countdownTotal
+        rescheduleReminder()
     }
+}
+
+private func roundedFontSize(_ value: CGFloat) -> CGFloat {
+    min(200, max(40, (value / 5).rounded() * 5))
+}
+
+private func roundedCountdownDuration(_ value: TimeInterval) -> TimeInterval {
+    let fiveMinutes = 5 * 60
+    let units = max(1, Int((value / TimeInterval(fiveMinutes)).rounded()))
+    return TimeInterval(units * fiveMinutes)
 }

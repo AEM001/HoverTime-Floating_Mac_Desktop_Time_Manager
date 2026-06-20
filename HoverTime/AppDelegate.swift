@@ -14,6 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var saveTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        applyApplicationIcon()
     }
 
     func setupPanel(with manager: TimerManager) {
@@ -22,13 +23,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let contentView = ContentView(manager: manager)
         let hostingView = NSHostingView(rootView: contentView)
-        hostingView.frame = NSRect(x: 0, y: 0, width: 300, height: 120)
+        hostingView.frame = NSRect(x: 0, y: 0, width: 300, height: 84)
+        hostingView.autoresizingMask = [.width, .height]
 
         let floatingPanel = FloatingPanel(contentView: hostingView)
         floatingPanel.isClickThrough = manager.clickThrough
         floatingPanel.alphaValue = CGFloat(manager.windowOpacity)
+        floatingPanel.clickAction = { [weak manager] in
+            guard let manager else { return }
+            ControlWindowManager.shared.toggle(manager: manager)
+        }
         floatingPanel.orderFrontRegardless()
         panel = floatingPanel
+        applyDockIconVisibility(manager.showDockIcon)
+        resizePanel(floatingPanel, for: manager)
 
         manager.$clickThrough
             .sink { [weak floatingPanel] value in
@@ -43,10 +51,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &cancellables)
 
         manager.$fontSize
-            .sink { [weak floatingPanel] size in
-                let width = max(200, size * 6)
-                let height = max(60, size * 2.5)
-                floatingPanel?.setContentSize(NSSize(width: width, height: height))
+            .sink { [weak self, weak floatingPanel, weak manager] _ in
+                guard let floatingPanel, let manager else { return }
+                self?.resizePanel(floatingPanel, for: manager)
+            }
+            .store(in: &cancellables)
+
+        manager.$showDate
+            .sink { [weak self, weak floatingPanel, weak manager] _ in
+                guard let floatingPanel, let manager else { return }
+                self?.resizePanel(floatingPanel, for: manager)
+            }
+            .store(in: &cancellables)
+
+        manager.$showSeconds
+            .sink { [weak self, weak floatingPanel, weak manager] _ in
+                guard let floatingPanel, let manager else { return }
+                self?.resizePanel(floatingPanel, for: manager)
+            }
+            .store(in: &cancellables)
+
+        manager.$mode
+            .sink { [weak self, weak floatingPanel, weak manager] _ in
+                guard let floatingPanel, let manager else { return }
+                self?.resizePanel(floatingPanel, for: manager)
+            }
+            .store(in: &cancellables)
+
+        manager.$showDockIcon
+            .removeDuplicates()
+            .sink { [weak self] value in
+                self?.applyDockIconVisibility(value)
             }
             .store(in: &cancellables)
 
@@ -77,7 +112,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func openSettingsWindow() {
         // Find existing main window or create via SwiftUI
         for window in NSApp.windows {
-            if window.title == "HoverTime" {
+            if window.title == "HoverTime Desktop Timer" {
                 window.makeKeyAndOrderFront(nil)
                 NSApp.activate(ignoringOtherApps: true)
                 return
@@ -91,6 +126,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         saveTimer?.invalidate()
         timerManager?.saveSettings()
         panel?.savePosition()
+    }
+
+    private func applyDockIconVisibility(_ visible: Bool) {
+        NSApp.setActivationPolicy(visible ? .regular : .accessory)
+    }
+
+    private func applyApplicationIcon() {
+        guard let path = Bundle.main.path(forResource: "AppIcon", ofType: "png"),
+              let image = NSImage(contentsOfFile: path) else {
+            return
+        }
+        NSApp.applicationIconImage = image
+    }
+
+    private func resizePanel(_ panel: FloatingPanel, for manager: TimerManager) {
+        let size = manager.fontSize
+        let widthMultiplier: CGFloat = manager.showSeconds ? 5.65 : 4.05
+        let dateExtra: CGFloat = manager.mode == .clock && manager.showDate ? size * 0.34 : 0
+        let width = max(190, size * widthMultiplier)
+        let height = max(52, size * 1.18 + dateExtra)
+        panel.setContentSize(NSSize(width: width, height: height))
     }
 }
 

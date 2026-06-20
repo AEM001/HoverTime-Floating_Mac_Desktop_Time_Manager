@@ -35,7 +35,7 @@ struct MenuBarView: View {
             Divider()
         }
 
-        Button("Open HoverTime...") {
+        Button("Open HoverTime Desktop Timer...") {
             openWindow(id: "main")
             NSApp.activate(ignoringOtherApps: true)
         }

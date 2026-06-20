@@ -17,7 +17,7 @@ class ControlPanelWindow: NSPanel {
             defer: false
         )
         titlebarAppearsTransparent = true
-        title = "HoverTime Controls"
+        title = "HoverTime Desktop Timer Controls"
         isReleasedWhenClosed = false
         isMovableByWindowBackground = true
         level = .floating
@@ -34,9 +34,21 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             if manager.showShadow {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.ultraThinMaterial)
-                    .opacity(0.3)
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(.regularMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
+                    .opacity(0.72)
+            }
+
+            if manager.reminderIsActive {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(tintColor.opacity(0.58), lineWidth: 1.5)
+                    .scaleEffect(1.08)
+                    .opacity(0.65)
+                    .transition(.opacity.combined(with: .scale))
             }
 
             VStack(spacing: 2) {
@@ -46,29 +58,30 @@ struct ContentView: View {
                 case .stopwatch: stopwatchView
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
             .contentShape(Rectangle())
-            .onTapGesture {
-                ControlWindowManager.shared.toggle(manager: manager)
-            }
         }
-        .frame(minWidth: 150, minHeight: 50)
-        .fixedSize()
+        .background(Color.black.opacity(0.001))
+        .scaleEffect(manager.reminderIsActive ? 1.025 : 1)
+        .animation(.easeInOut(duration: 0.65).repeatCount(4, autoreverses: true), value: manager.reminderPulseID)
+        .animation(.easeOut(duration: 0.2), value: manager.reminderIsActive)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(minWidth: 160, minHeight: 44)
     }
 
     // MARK: - Color & Font Helpers
 
     var tintColor: Color {
         switch manager.displayColor {
-        case .white: return Color(white: 1.0)
-        case .amber: return Color(red: 1.0, green: 0.78, blue: 0.1)
-        case .cyan:  return Color(red: 0.1, green: 0.9, blue: 1.0)
-        case .rose:  return Color(red: 1.0, green: 0.35, blue: 0.45)
+        case .porcelain: return Color(red: 0.92, green: 0.90, blue: 0.84)
+        case .graphite: return Color(red: 0.70, green: 0.72, blue: 0.70)
+        case .sage: return Color(red: 0.66, green: 0.73, blue: 0.66)
+        case .copper: return Color(red: 0.76, green: 0.55, blue: 0.41)
         }
     }
 
-    private var glowColor: Color { tintColor.opacity(0.45) }
+    private var glowColor: Color { tintColor.opacity(0.18) }
 
     func timeFont(size: CGFloat) -> Font {
         switch manager.displayFont {
@@ -86,12 +99,12 @@ struct ContentView: View {
             Text(manager.clockDisplayString)
                 .font(timeFont(size: manager.fontSize))
                 .foregroundStyle(tintColor)
-                .shadow(color: glowColor, radius: 8, x: 0, y: 0)
-                .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
+                .shadow(color: glowColor, radius: manager.reminderIsActive ? 12 : 4, x: 0, y: 0)
+                .shadow(color: .black.opacity(0.32), radius: 1.5, x: 0, y: 1)
             if manager.showDate {
                 Text(manager.dateDisplayString)
                     .font(timeFont(size: manager.fontSize * 0.3))
-                    .foregroundStyle(tintColor.opacity(0.7))
+                    .foregroundStyle(tintColor.opacity(0.68))
             }
         }
     }
@@ -99,11 +112,11 @@ struct ContentView: View {
     // MARK: - Countdown View
 
     private var countdownView: some View {
-        Text(TimerManager.formatTime(manager.countdownRemaining))
+        Text(TimerManager.formatTime(manager.countdownRemaining, showSeconds: manager.showSeconds))
             .font(timeFont(size: manager.fontSize))
             .foregroundStyle(tintColor)
-            .shadow(color: glowColor, radius: 8, x: 0, y: 0)
-            .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
+            .shadow(color: glowColor, radius: manager.reminderIsActive ? 12 : 4, x: 0, y: 0)
+            .shadow(color: .black.opacity(0.32), radius: 1.5, x: 0, y: 1)
     }
 
     // MARK: - Stopwatch View
@@ -112,8 +125,8 @@ struct ContentView: View {
         Text(manager.stopwatchDisplayString)
             .font(timeFont(size: manager.fontSize))
             .foregroundStyle(tintColor)
-            .shadow(color: glowColor, radius: 8, x: 0, y: 0)
-            .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
+            .shadow(color: glowColor, radius: manager.reminderIsActive ? 12 : 4, x: 0, y: 0)
+            .shadow(color: .black.opacity(0.32), radius: 1.5, x: 0, y: 1)
     }
 }
 
@@ -165,10 +178,16 @@ struct TimePickerField: View {
             Text(label).font(.caption).foregroundStyle(.secondary)
             
             HStack(spacing: 4) {
-                TextField("", value: $value, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 50)
-                    .multilineTextAlignment(.center)
+                Button(action: { cycleDown() }) {
+                    Image(systemName: "minus")
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Text("\(value)")
+                    .frame(width: 42)
                     .font(.system(size: 16, weight: .medium, design: .monospaced))
                 
                 Text(suffix)
@@ -176,23 +195,13 @@ struct TimePickerField: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 12)
                 
-                VStack(spacing: 2) {
-                    Button(action: { cycleUp() }) {
-                        Image(systemName: "chevron.up")
-                            .font(.system(size: 10, weight: .semibold))
-                            .frame(width: 20, height: 14)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
-                    
-                    Button(action: { cycleDown() }) {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .frame(width: 20, height: 14)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
+                Button(action: { cycleUp() }) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 18, height: 18)
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
     }
@@ -301,7 +310,6 @@ struct ControlPanelView: View {
             }
             .controlSize(.regular)
             .buttonStyle(.borderedProminent)
-            .tint(isRunning ? .orange : .green)
 
             Button(action: { manager.resetCurrent() }) {
                 Label("Reset", systemImage: "arrow.counterclockwise")
@@ -322,7 +330,7 @@ struct ControlPanelView: View {
 
                 HStack(spacing: 6) {
                     Button {
-                        manager.fontSize = max(40, manager.fontSize - 4)
+                        adjustFontSize(by: -5)
                         manager.saveSettings()
                     } label: {
                         Image(systemName: "minus")
@@ -331,16 +339,13 @@ struct ControlPanelView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
 
-                    Slider(value: $manager.fontSize, in: 40...200, step: 2)
-                        .onChange(of: manager.fontSize) { _, _ in manager.saveSettings() }
-
                     Text("\(Int(manager.fontSize))")
-                        .font(.caption.monospacedDigit())
+                        .font(.system(.body, design: .monospaced))
                         .foregroundStyle(.secondary)
-                        .frame(width: 28, alignment: .trailing)
+                        .frame(width: 44)
 
                     Button {
-                        manager.fontSize = min(200, manager.fontSize + 4)
+                        adjustFontSize(by: 5)
                         manager.saveSettings()
                     } label: {
                         Image(systemName: "plus")
@@ -399,10 +404,29 @@ struct ControlPanelView: View {
             HStack(spacing: 16) {
                 Toggle("Blur", isOn: $manager.showShadow)
                     .onChange(of: manager.showShadow) { _, _ in manager.saveSettings() }
+                Toggle("Seconds", isOn: $manager.showSeconds)
+                    .onChange(of: manager.showSeconds) { _, _ in manager.saveSettings() }
                 Toggle("Click-through", isOn: $manager.clickThrough)
                     .onChange(of: manager.clickThrough) { _, _ in manager.saveSettings() }
             }
             .font(.caption)
+
+            Divider()
+
+            Toggle("Reminder pulse", isOn: $manager.reminderEnabled)
+                .onChange(of: manager.reminderEnabled) { _, _ in
+                    manager.rescheduleReminder()
+                    manager.saveSettings()
+                }
+            if manager.reminderEnabled {
+                Stepper("Every \(manager.reminderIntervalMinutes) min", value: $manager.reminderIntervalMinutes, in: 1...120, step: 1)
+                    .onChange(of: manager.reminderIntervalMinutes) { _, _ in
+                        manager.rescheduleReminder()
+                        manager.saveSettings()
+                    }
+            }
+            Toggle("Show in Dock", isOn: $manager.showDockIcon)
+                .onChange(of: manager.showDockIcon) { _, _ in manager.saveSettings() }
         }
     }
 
@@ -412,19 +436,18 @@ struct ControlPanelView: View {
         case .clock:
             VStack(alignment: .leading, spacing: 10) {
                 Toggle("24-hour format", isOn: $manager.use24Hour)
-                Toggle("Show seconds", isOn: $manager.showSeconds)
                 Toggle("Show date", isOn: $manager.showDate)
             }
             .onChange(of: manager.use24Hour) { _, _ in manager.saveSettings() }
-            .onChange(of: manager.showSeconds) { _, _ in manager.saveSettings() }
             .onChange(of: manager.showDate) { _, _ in manager.saveSettings() }
 
         case .countdown:
             countdownControls
 
         case .stopwatch:
-            Toggle("Show seconds", isOn: $manager.stopwatchShowSeconds)
-                .onChange(of: manager.stopwatchShowSeconds) { _, _ in manager.saveSettings() }
+            Text("Elapsed time follows the global seconds setting.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -435,14 +458,14 @@ struct ControlPanelView: View {
                     Text("Remaining")
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text(TimerManager.formatTime(manager.countdownRemaining))
+                    Text(TimerManager.formatTime(manager.countdownRemaining, showSeconds: manager.showSeconds))
                         .font(.system(.body, design: .monospaced))
                 }
             } else {
                 HStack(spacing: 18) {
                     TimePickerField(label: "Hours", value: countdownHours, options: Array(0...23), suffix: "h")
                     Text(":").font(.title2).foregroundStyle(.secondary)
-                    TimePickerField(label: "Minutes", value: countdownMinutes, options: Array(0...59), suffix: "m")
+                    TimePickerField(label: "Minutes", value: countdownMinutes, options: Array(stride(from: 0, through: 55, by: 5)), suffix: "m")
                     Spacer(minLength: 0)
                 }
             }
@@ -506,10 +529,15 @@ struct ControlPanelView: View {
 
     private func swatchColor(for color: DisplayColor) -> Color {
         switch color {
-        case .white: return Color(white: 0.95)
-        case .amber: return Color(red: 1.0, green: 0.78, blue: 0.1)
-        case .cyan:  return Color(red: 0.1, green: 0.9, blue: 1.0)
-        case .rose:  return Color(red: 1.0, green: 0.35, blue: 0.45)
+        case .porcelain: return Color(red: 0.92, green: 0.90, blue: 0.84)
+        case .graphite: return Color(red: 0.70, green: 0.72, blue: 0.70)
+        case .sage: return Color(red: 0.66, green: 0.73, blue: 0.66)
+        case .copper: return Color(red: 0.76, green: 0.55, blue: 0.41)
         }
+    }
+
+    private func adjustFontSize(by delta: CGFloat) {
+        let rounded = (manager.fontSize / 5).rounded() * 5
+        manager.fontSize = min(200, max(40, rounded + delta))
     }
 }

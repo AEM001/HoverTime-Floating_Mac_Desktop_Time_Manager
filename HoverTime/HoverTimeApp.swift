@@ -12,11 +12,11 @@ struct HoverTimeApp: App {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
-        MenuBarExtra("HoverTime", systemImage: "clock") {
+        MenuBarExtra("HoverTime Desktop Timer", systemImage: "clock") {
             MenuBarView(manager: manager, appDelegate: appDelegate)
         }
 
-        Window("HoverTime", id: "main") {
+        Window("HoverTime Desktop Timer", id: "main") {
             MainView(manager: manager)
                 .onAppear {
                     appDelegate.setupPanel(with: manager)

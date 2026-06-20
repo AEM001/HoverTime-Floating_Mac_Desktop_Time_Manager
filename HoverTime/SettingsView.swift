@@ -105,10 +105,26 @@ struct SettingsView: View {
 
             HStack {
                 Text("Font size")
-                Slider(value: $manager.fontSize, in: 40...200, step: 2)
+                Button {
+                    adjustFontSize(by: -5)
+                } label: {
+                    Image(systemName: "minus")
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
                 Text("\(Int(manager.fontSize))")
-                    .frame(width: 30)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(width: 46)
                     .foregroundStyle(.secondary)
+                Button {
+                    adjustFontSize(by: 5)
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
 
             HStack {
@@ -120,6 +136,7 @@ struct SettingsView: View {
             }
 
             Toggle("Background blur", isOn: $manager.showShadow)
+            Toggle("Show seconds", isOn: $manager.showSeconds)
         }
     }
 
@@ -128,7 +145,6 @@ struct SettingsView: View {
     private var clockSection: some View {
         settingsSection("Clock") {
             Toggle("24-hour format", isOn: $manager.use24Hour)
-            Toggle("Show seconds", isOn: $manager.showSeconds)
             Toggle("Show date", isOn: $manager.showDate)
         }
     }
@@ -153,7 +169,7 @@ struct SettingsView: View {
                 TimePickerField(
                     label: "Minutes",
                     value: countdownMinutes,
-                    options: [0, 15, 30, 45],
+                    options: Array(stride(from: 0, through: 55, by: 5)),
                     suffix: "m"
                 )
             }
@@ -178,7 +194,8 @@ struct SettingsView: View {
 
     private var stopwatchSection: some View {
         settingsSection("Stopwatch") {
-            Toggle("Show seconds", isOn: $manager.stopwatchShowSeconds)
+            Text("Stopwatch follows the global seconds setting.")
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -188,6 +205,13 @@ struct SettingsView: View {
         settingsSection("General") {
             Toggle("Sound notifications", isOn: $manager.soundEnabled)
             Toggle("Click-through mode", isOn: $manager.clickThrough)
+            Toggle("Reminder pulse", isOn: $manager.reminderEnabled)
+                .onChange(of: manager.reminderEnabled) { _, _ in manager.rescheduleReminder() }
+            if manager.reminderEnabled {
+                Stepper("Reminder interval: \(manager.reminderIntervalMinutes) min", value: $manager.reminderIntervalMinutes, in: 1...120, step: 1)
+                    .onChange(of: manager.reminderIntervalMinutes) { _, _ in manager.rescheduleReminder() }
+            }
+            Toggle("Show in Dock", isOn: $manager.showDockIcon)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Keyboard Shortcuts")
@@ -228,10 +252,15 @@ struct SettingsView: View {
 
     private func swatchColor(for color: DisplayColor) -> Color {
         switch color {
-        case .white: return Color(white: 0.95)
-        case .amber: return Color(red: 1.0, green: 0.78, blue: 0.1)
-        case .cyan:  return Color(red: 0.1, green: 0.9, blue: 1.0)
-        case .rose:  return Color(red: 1.0, green: 0.35, blue: 0.45)
+        case .porcelain: return Color(red: 0.92, green: 0.90, blue: 0.84)
+        case .graphite: return Color(red: 0.70, green: 0.72, blue: 0.70)
+        case .sage: return Color(red: 0.66, green: 0.73, blue: 0.66)
+        case .copper: return Color(red: 0.76, green: 0.55, blue: 0.41)
         }
+    }
+
+    private func adjustFontSize(by delta: CGFloat) {
+        let rounded = (manager.fontSize / 5).rounded() * 5
+        manager.fontSize = min(200, max(40, rounded + delta))
     }
 }

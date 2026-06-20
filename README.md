@@ -1,65 +1,89 @@
-# HoverTime
+# HoverTime Desktop Timer
 
-A floating, always-on-top time utility for macOS. Transparent window with only numbers visible — minimal distraction, persistent visibility across all apps and Spaces.
+Floating desktop clock, countdown, and stopwatch for macOS. HoverTime stays above your work without taking over the screen, so you can keep time visible while writing, coding, presenting, streaming, or working in fullscreen apps.
+
+[中文说明](README.zh-CN.md)
+
+## Screenshots
+
+![Floating clock](show/Screenshot%202026-06-20%20at%2012.38.21.png)
+
+![Countdown controls](show/Screenshot%202026-06-20%20at%2012.38.36.png)
+
+![Appearance settings](show/Screenshot%202026-06-20%20at%2012.38.42.png)
+
+![Reminder and Dock settings](show/Screenshot%202026-06-20%20at%2012.38.48.png)
+
+![Desktop timer workflow](show/Screenshot%202026-06-20%20at%2012.39.02.png)
 
 ## Features
 
-### Time Modes
-- **Clock** — Digital time (HH:MM:SS), 12h/24h toggle, optional date & seconds
-- **Countdown** — Manual input or presets (5, 10, 25, 45, 60 min), pause/resume/reset, visual progress ring, auto-repeat
-- **Pomodoro** — 25/5 work/break cycle, customizable durations, session counter, long break after N sessions, auto-start toggle
+- Floating always-on-top timer window for macOS
+- Clock, countdown, and stopwatch modes
+- Visible across Spaces and fullscreen apps
+- Elegant low-distraction typography with refined color themes
+- Click the floating timer to open compact controls
+- Draggable position with automatic position memory
+- Optional click-through mode
+- Global seconds toggle shared by all timer modes
+- Countdown duration picker with plus/minus controls and 5-minute steps
+- Font size controls with 5-point increments
+- Optional reminder pulse every N minutes
+- Menu bar controls and optional Dock icon
+- Native macOS notifications and sound for countdown completion
 
-### Window Behavior
-- Always-on-top (floats above all windows including fullscreen)
-- Visible across all Spaces
-- Fully transparent background — only numbers are visible
-- Click-through mode (optional)
-- Draggable positioning with position memory
-- Adjustable font size and opacity
-- Optional background blur
+## Why HoverTime
 
-### System Integration
-- Menu bar control (clock icon)
-- LSUIElement — no Dock icon
-- macOS native notifications on timer completion
-- Sound notification (Glass)
-- Settings persistence via UserDefaults
+Most timer apps either live in the menu bar where they are easy to ignore, or open a full window that competes with your work. HoverTime is designed as a small persistent overlay: visible enough to help, quiet enough to forget.
 
-### Keyboard Shortcuts
-| Action       | Shortcut       |
-|-------------|----------------|
-| Show/Hide   | Cmd+Shift+T    |
-| Start/Pause | Cmd+Shift+S    |
-| Cycle Mode  | Cmd+Shift+M    |
-| Reset       | Cmd+Shift+R    |
+Good for:
 
-## Build & Run
+- focus sessions and Pomodoro-style work
+- presenters who need a visible countdown
+- streamers and screen recordings
+- keeping wall-clock time visible in fullscreen apps
+- lightweight stopwatch timing
+
+## Build
 
 ### Requirements
-- macOS 15+ (Sequoia)
-- Xcode 16+
 
-### Steps
-1. Open `HoverTime.xcodeproj` in Xcode
-2. Select the **HoverTime** scheme
-3. Press **Cmd+R** to build and run
+- macOS 15 or later
+- Xcode or Apple Command Line Tools with Swift
 
-The app launches as a menu bar app (no Dock icon). A floating time display appears on screen. Right-click the clock icon in the menu bar for controls and settings.
+### Xcode
 
-## Architecture
+1. Open `HoverTime.xcodeproj`
+2. Select the `HoverTime` scheme
+3. Press `Cmd+R`
+
+### Manual App Bundle
+
+The project can also be compiled without `xcodebuild`:
+
+```bash
+swiftc -target arm64-apple-macosx15.0 \
+  -module-cache-path /private/tmp/hovertime-module-cache \
+  -parse-as-library -O \
+  -framework SwiftUI -framework AppKit -framework Combine -framework UserNotifications \
+  HoverTime/TimerManager.swift HoverTime/FloatingPanel.swift HoverTime/ContentView.swift \
+  HoverTime/SettingsView.swift HoverTime/MainView.swift HoverTime/MenuBarView.swift \
+  HoverTime/AppDelegate.swift HoverTime/HoverTimeApp.swift \
+  -o dist/HoverTime.app/Contents/MacOS/HoverTime
+```
+
+## Project Structure
 
 | File | Purpose |
-|------|---------|
-| `HoverTimeApp.swift` | App entry point, wires AppDelegate |
-| `AppDelegate.swift` | Creates floating panel, menu bar, global hotkeys, settings window |
-| `FloatingPanel.swift` | NSPanel subclass — always-on-top, transparent, draggable, click-through |
-| `TimerManager.swift` | Core logic — clock, countdown, pomodoro state machines, persistence |
-| `ContentView.swift` | SwiftUI floating display — minimal typography, progress rings, hover controls |
-| `SettingsView.swift` | Tabbed settings — general, clock, countdown, pomodoro, appearance |
-| `Info.plist` | LSUIElement (menu bar only app) |
+| --- | --- |
+| `HoverTimeApp.swift` | App entry point and SwiftUI scenes |
+| `AppDelegate.swift` | Floating panel setup, Dock visibility, app lifecycle |
+| `FloatingPanel.swift` | Always-on-top transparent `NSPanel` |
+| `TimerManager.swift` | Clock, countdown, stopwatch, reminders, persistence |
+| `ContentView.swift` | Floating timer display and compact controls |
+| `SettingsView.swift` | Full settings window |
+| `MenuBarView.swift` | Menu bar commands |
 
-## UX Philosophy
-- Always visible, never intrusive
-- Zero friction — hover to reveal controls
-- One-click state changes
-- Minimal cognitive load
+## Release
+
+See [RELEASE.md](RELEASE.md) for the current release notes.

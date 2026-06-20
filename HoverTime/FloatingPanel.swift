@@ -7,6 +7,9 @@ import AppKit
 import SwiftUI
 
 class FloatingPanel: NSPanel {
+    var clickAction: (() -> Void)?
+    private var mouseDownLocation: NSPoint?
+
     init(contentView: NSView) {
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 300, height: 120),
@@ -46,6 +49,22 @@ class FloatingPanel: NSPanel {
 
     override var canBecomeKey: Bool { !isClickThrough }
     override var canBecomeMain: Bool { false }
+
+    override func mouseDown(with event: NSEvent) {
+        mouseDownLocation = event.locationInWindow
+        super.mouseDown(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        let upLocation = event.locationInWindow
+        let downLocation = mouseDownLocation ?? upLocation
+        mouseDownLocation = nil
+        let moved = hypot(upLocation.x - downLocation.x, upLocation.y - downLocation.y)
+        if moved < 4 {
+            clickAction?()
+        }
+        super.mouseUp(with: event)
+    }
 
     // MARK: - Position memory
 
