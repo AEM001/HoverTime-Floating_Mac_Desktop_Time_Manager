@@ -4,18 +4,6 @@ Floating desktop clock, countdown, and stopwatch for macOS. HoverTime stays abov
 
 [中文说明](README.zh-CN.md)
 
-## Screenshots
-
-![Floating clock](show/Screenshot%202026-06-20%20at%2012.38.21.png)
-
-![Countdown controls](show/Screenshot%202026-06-20%20at%2012.38.36.png)
-
-![Appearance settings](show/Screenshot%202026-06-20%20at%2012.38.42.png)
-
-![Reminder and Dock settings](show/Screenshot%202026-06-20%20at%2012.38.48.png)
-
-![Desktop timer workflow](show/Screenshot%202026-06-20%20at%2012.39.02.png)
-
 ## Features
 
 - Floating always-on-top timer window for macOS
@@ -87,3 +75,11 @@ swiftc -target arm64-apple-macosx15.0 \
 ## Release
 
 See [RELEASE.md](RELEASE.md) for the current release notes.
+
+## Screenshots
+
+<img src="show/Screenshot%202026-06-20%20at%2012.38.21.png" width="200" alt="Floating clock">
+<img src="show/Screenshot%202026-06-20%20at%2012.38.36.png" width="200" alt="Countdown controls">
+<img src="show/Screenshot%202026-06-20%20at%2012.38.42.png" width="200" alt="Appearance settings">
+<img src="show/Screenshot%202026-06-20%20at%2012.38.48.png" width="200" alt="Reminder and Dock settings">
+<img src="show/Screenshot%202026-06-20%20at%2012.39.02.png" width="200" alt="Desktop timer workflow">
