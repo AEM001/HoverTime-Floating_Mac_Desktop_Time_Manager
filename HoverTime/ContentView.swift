@@ -53,17 +53,10 @@ struct ContentView: View {
         }
         .padding(.horizontal, manager.reminderIsActive ? 18 : 12)
         .padding(.vertical, manager.reminderIsActive ? 8 : 4)
-        .glassEffect(
-            .regular
-                .tint(tintColor.opacity(0.08))
-                .interactive(),
-            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
-        )
-        .overlay(panelRim)
+        .background(panelBackground)
         .overlay(reminderOverlay)
         .contentShape(Rectangle())
-        .shadow(color: .black.opacity(manager.showShadow ? 0.20 : 0.10), radius: 14, y: 5)
-        .shadow(color: tintColor.opacity(0.10), radius: 8)
+        .background(Color.black.opacity(0.001))
         .scaleEffect(manager.reminderIsActive ? 1.08 : 1)
         .animation(.easeInOut(duration: 0.48).repeatCount(8, autoreverses: true), value: manager.reminderPulseID)
         .animation(.easeOut(duration: 0.2), value: manager.reminderIsActive)
@@ -84,40 +77,44 @@ struct ContentView: View {
     private var glowColor: Color { tintColor.opacity(0.22) }
     private var reminderColor: Color { Color(red: 1.0, green: 0.80, blue: 0.18) }
 
-    private var panelRim: some View {
+    private var panelBackground: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.black.opacity(manager.showShadow ? 0.055 : 0.025))
+
+            if manager.showShadow {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(.regularMaterial)
+                    .opacity(0.72)
+            }
+
+            // Liquid glass specular highlight: a soft white sheen along the top edge.
+            RoundedRectangle(cornerRadius: 10)
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color.white.opacity(0.20),
-                            Color.white.opacity(0.045),
+                            Color.white.opacity(0.18),
+                            Color.white.opacity(0.04),
                             Color.clear
                         ],
                         startPoint: .top,
-                        endPoint: .bottom
+                        endPoint: .center
                     )
                 )
                 .mask(
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .strokeBorder(lineWidth: 1.1)
+                    RoundedRectangle(cornerRadius: 10)
+                        .padding(.horizontal, 0.5)
                 )
 
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.26),
-                            Color.white.opacity(0.08),
-                            Color.black.opacity(0.10)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.75
-                )
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.8)
+
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.black.opacity(0.10), lineWidth: 0.8)
+                .blendMode(.multiply)
         }
-        .allowsHitTesting(false)
+        .shadow(color: Color.black.opacity(0.16), radius: 10, x: 0, y: 2)
+        .shadow(color: Color.white.opacity(0.14), radius: 5, x: 0, y: 0)
     }
 
     @ViewBuilder
