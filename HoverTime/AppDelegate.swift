@@ -225,6 +225,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return false
     }
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
     func openSettingsWindow() {
         if let window = settingsWindow {
             bringSettingsWindowToFront(window)
@@ -242,6 +246,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
         window.title = "HoverTime Desktop Timer"
         window.contentMinSize = NSSize(width: 560, height: 620)
+        window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: MainView(manager: TimerManager.shared))
         window.delegate = self
         window.center()
@@ -260,10 +265,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.orderFrontRegardless()
     }
 
-    func windowWillClose(_ notification: Notification) {
-        if notification.object as? NSWindow === managedSettingsWindow {
-            managedSettingsWindow = nil
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard sender === managedSettingsWindow else { return true }
+
+        // HoverTime is a menu-bar app. Keep the AppKit/SwiftUI hosting hierarchy
+        // alive and treat the red close button as Hide. Releasing this window
+        // from inside AppKit's close transaction can cause an over-release.
+        DispatchQueue.main.async { [weak sender] in
+            sender?.orderOut(nil)
         }
+        return false
     }
 
     func applicationWillTerminate(_ notification: Notification) {
