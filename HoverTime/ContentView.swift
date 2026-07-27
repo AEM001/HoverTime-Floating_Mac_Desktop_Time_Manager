@@ -10,7 +10,6 @@ import AppKit
 
 struct ContentView: View {
     @ObservedObject var manager: TimerManager
-    @State private var colonHovered = false
 
     var body: some View {
         VStack(spacing: manager.reminderIsActive ? 4 : 2) {
@@ -172,41 +171,18 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Time display with colon-as-click-target
+    // MARK: - Time display
 
-    /// Renders the time string with a subtle hover affordance on each colon.
-    /// The enclosing FloatingPanel owns click detection so it remains reliable
-    /// for this borderless AppKit window.
-    @ViewBuilder
+    /// The enclosing FloatingPanel handles clicks across the whole display.
     private func timeDisplay(_ text: String) -> some View {
-        let parts = text.components(separatedBy: ":")
-        HStack(spacing: 0) {
-            ForEach(Array(parts.enumerated()), id: \.offset) { idx, part in
-                if idx > 0 {
-                    colonHotspot
-                }
-                Text(part)
-                    .font(timeFont(size: manager.fontSize))
-                    .foregroundStyle(tintColor)
-                    .monospacedDigit()
-            }
-        }
+        Text(text)
+            .font(timeFont(size: manager.fontSize))
+            .foregroundStyle(tintColor)
+            .monospacedDigit()
         .shadow(color: .white.opacity(0.30), radius: 1.0, x: 0, y: 0)
         .shadow(color: glowColor, radius: manager.reminderIsActive ? 14 : 5, x: 0, y: 0)
         .shadow(color: .black.opacity(0.58), radius: 2.0, x: 0, y: 1)
         .fixedSize()
-    }
-
-    /// The colon opens the small temporary control panel.
-    private var colonHotspot: some View {
-        Text(":")
-            .font(timeFont(size: manager.fontSize))
-            .foregroundStyle(tintColor)
-            .monospacedDigit()
-            .contentShape(Rectangle())
-            .onHover { hovering in colonHovered = hovering }
-            .scaleEffect(colonHovered ? 1.12 : 1)
-            .animation(.easeOut(duration: 0.15), value: colonHovered)
     }
 
     // MARK: - Clock View
