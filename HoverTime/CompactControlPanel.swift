@@ -8,8 +8,18 @@ import SwiftUI
 
 /// A small, temporary control surface independent from the full settings window.
 final class CompactControlPanel: NSPanel {
-    init(manager: TimerManager, closeAction: @escaping () -> Void) {
-        let hostingView = NSHostingView(rootView: CompactControlView(manager: manager, closeAction: closeAction))
+    init(
+        manager: TimerManager,
+        closeAction: @escaping () -> Void,
+        openSettingsAction: @escaping () -> Void
+    ) {
+        let hostingView = NSHostingView(
+            rootView: CompactControlView(
+                manager: manager,
+                closeAction: closeAction,
+                openSettingsAction: openSettingsAction
+            )
+        )
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 300, height: 178),
             styleMask: [.nonactivatingPanel, .borderless],
@@ -33,6 +43,7 @@ final class CompactControlPanel: NSPanel {
 private struct CompactControlView: View {
     @ObservedObject var manager: TimerManager
     let closeAction: () -> Void
+    let openSettingsAction: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
@@ -98,8 +109,8 @@ private struct CompactControlView: View {
                     .lineLimit(1)
 
                 Button("Full Settings…") {
+                    openSettingsAction()
                     closeAction()
-                    (NSApp.delegate as? AppDelegate)?.openSettingsWindow()
                 }
                 .frame(width: 150)
                 .buttonStyle(.borderedProminent)

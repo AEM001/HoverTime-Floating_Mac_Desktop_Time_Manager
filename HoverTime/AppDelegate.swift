@@ -159,9 +159,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         if compactControlPanel == nil {
-            compactControlPanel = CompactControlPanel(manager: timerManager) { [weak self] in
-                self?.hideCompactControls()
-            }
+            compactControlPanel = CompactControlPanel(
+                manager: timerManager,
+                closeAction: { [weak self] in
+                    self?.hideCompactControls()
+                },
+                openSettingsAction: { [weak self] in
+                    self?.openSettingsWindow()
+                }
+            )
         }
 
         guard let compactControlPanel else { return }
