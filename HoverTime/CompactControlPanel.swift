@@ -113,19 +113,36 @@ private struct CompactControlView: View {
                     closeAction()
                 }
                 .frame(width: 150)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glass(.regular.tint(Color.accentColor.opacity(0.22))))
                 .controlSize(.regular)
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
         .frame(width: 300, height: manager.mode == .countdown ? 174 : 132)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .glassEffect(
+            .regular
+                .tint(Color.white.opacity(0.035))
+                .interactive(),
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.22), lineWidth: 0.8)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.34),
+                            Color.white.opacity(0.10),
+                            Color.black.opacity(0.12)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.8
+                )
         )
-        .shadow(color: .black.opacity(0.22), radius: 18, y: 6)
+        .shadow(color: .black.opacity(0.20), radius: 22, y: 8)
+        .shadow(color: .white.opacity(0.08), radius: 5, y: -1)
     }
 
     private var modeTitle: String {
