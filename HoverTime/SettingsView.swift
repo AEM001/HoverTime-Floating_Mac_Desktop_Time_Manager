@@ -210,7 +210,7 @@ struct SettingsView: View {
             if manager.reminderEnabled {
                 Stepper("Reminder interval: \(manager.reminderIntervalMinutes) min", value: $manager.reminderIntervalMinutes, in: 1...120, step: 1)
                     .onChange(of: manager.reminderIntervalMinutes) { _, _ in manager.rescheduleReminder() }
-                Text("Counts from app launch, or from the moment you enable/change this setting. The floating timer shows a bright visual banner for 8 seconds.")
+                Text("Clock: fires on wall-clock marks (:00, :05, :10…). Timer/Stopwatch: counts from the start of the run. The floating timer shows a bright visual banner for 8 seconds.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

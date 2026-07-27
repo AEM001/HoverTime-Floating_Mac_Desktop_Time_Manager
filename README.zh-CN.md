@@ -69,7 +69,8 @@ HoverTime 是一款 macOS 桌面悬浮时间工具，支持时钟、倒计时和
 | `AppDelegate.swift` | 悬浮窗口、Dock 显示、应用生命周期 |
 | `FloatingPanel.swift` | 置顶透明 `NSPanel` |
 | `TimerManager.swift` | 时钟、倒计时、正计时、提醒和持久化 |
-| `ContentView.swift` | 悬浮时间显示和紧凑控制面板 |
+| `ContentView.swift` | 悬浮时间显示和冒号点击入口 |
+| `CompactControlPanel.swift` | 临时快速控制面板 |
 | `SettingsView.swift` | 完整设置窗口 |
 | `MenuBarView.swift` | 菜单栏操作 |
 

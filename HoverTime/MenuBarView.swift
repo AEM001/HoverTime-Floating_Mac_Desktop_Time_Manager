@@ -8,7 +8,6 @@ import SwiftUI
 struct MenuBarView: View {
     @ObservedObject var manager: TimerManager
     var appDelegate: AppDelegate
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Button(appDelegate.panel?.isVisible == true ? "Hide Timer" : "Show Timer") {
@@ -18,6 +17,13 @@ struct MenuBarView: View {
         .onAppear {
             appDelegate.setupPanel(with: manager)
         }
+
+        // Snap the floating timer to top-center, just below the menu bar,
+        // whether it's currently hidden or just off-screen.
+        Button("Recenter at Top") {
+            appDelegate.showPanelAtTopCenter(manager: manager)
+        }
+        .keyboardShortcut("c")
 
         Divider()
 
@@ -36,8 +42,7 @@ struct MenuBarView: View {
         }
 
         Button("Open HoverTime Desktop Timer...") {
-            openWindow(id: "main")
-            NSApp.activate(ignoringOtherApps: true)
+            appDelegate.openSettingsWindow()
         }
         .keyboardShortcut(",")
 

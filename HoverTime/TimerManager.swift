@@ -29,8 +29,19 @@ enum DisplayFont: String, CaseIterable {
 }
 
 class TimerManager: ObservableObject {
+    /// Single shared instance, created lazily on first access. Guaranteed to
+    /// exist before applicationDidFinishLaunching runs because the SwiftUI
+    /// App.init() touches it.
+    static let shared = TimerManager()
+
     // MARK: - Mode
-    @Published var mode: TimeMode = .clock
+    @Published var mode: TimeMode = .clock {
+        didSet {
+            if oldValue != mode, reminderEnabled {
+                rescheduleReminder()
+            }
+        }
+    }
 
     // MARK: - Clock
     @Published var currentTime: Date = Date()
@@ -77,7 +88,7 @@ class TimerManager: ObservableObject {
     private var lastStopwatchWholeSeconds: Int?
     private var nextReminderDate: Date?
 
-    init() {
+    private init() {
         loadSettings()
         startDisplayTimer()
         requestNotificationPermission()
@@ -140,6 +151,8 @@ class TimerManager: ObservableObject {
         countdownRunning = true
         countdownPaused = false
         refreshDisplayedTime()
+        // Re-anchor reminders to the moment the countdown starts.
+        if reminderEnabled { rescheduleReminder() }
     }
 
     func pauseCountdown() {
@@ -148,6 +161,7 @@ class TimerManager: ObservableObject {
         countdownPaused = true
         countdownEndDate = nil
         lastCountdownWholeSeconds = nil
+        if reminderEnabled { rescheduleReminder() }
     }
 
     func resetCountdown() {
@@ -156,6 +170,7 @@ class TimerManager: ObservableObject {
         countdownEndDate = nil
         lastCountdownWholeSeconds = nil
         countdownRemaining = countdownTotal
+        if reminderEnabled { rescheduleReminder() }
     }
 
     func setCountdownPreset(_ minutes: Int) {
@@ -184,6 +199,7 @@ class TimerManager: ObservableObject {
         countdownPaused = false
         playSound()
         sendNotification(title: "Countdown Complete", body: "Your timer has finished!")
+        if reminderEnabled { rescheduleReminder() }
         if countdownAutoRepeat {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
                 self?.startCountdown()
@@ -207,6 +223,8 @@ class TimerManager: ObservableObject {
         stopwatchStartDate = Date()
         lastStopwatchWholeSeconds = Int(stopwatchElapsed)
         refreshDisplayedTime()
+        // Re-anchor reminders to the moment the stopwatch starts.
+        if reminderEnabled { rescheduleReminder() }
     }
 
     func pauseStopwatch() {
@@ -218,6 +236,7 @@ class TimerManager: ObservableObject {
         stopwatchStartDate = nil
         stopwatchElapsed = stopwatchAccumulated
         lastStopwatchWholeSeconds = nil
+        if reminderEnabled { rescheduleReminder() }
     }
 
     func resetStopwatch() {
@@ -226,6 +245,7 @@ class TimerManager: ObservableObject {
         lastStopwatchWholeSeconds = nil
         stopwatchAccumulated = 0
         stopwatchElapsed = 0
+        if reminderEnabled { rescheduleReminder() }
     }
 
     private func updateStopwatch(now: Date) {
@@ -266,8 +286,53 @@ class TimerManager: ObservableObject {
             reminderActiveUntil = nil
             return
         }
-        let minutes = max(1, reminderIntervalMinutes)
-        nextReminderDate = date.addingTimeInterval(TimeInterval(minutes * 60))
+        let interval = TimeInterval(max(1, reminderIntervalMinutes) * 60)
+        nextReminderDate = computeNextReminderDate(after: date, interval: interval)
+    }
+
+    /// Computes the next reminder based on the current mode:
+    /// - Clock (or idle timer): next wall-clock boundary at a multiple of the interval
+    /// - Running countdown/stopwatch: next multiple of the interval from the timer's start
+    private func computeNextReminderDate(after date: Date, interval: TimeInterval) -> Date {
+        switch mode {
+        case .clock:
+            return nextWallClockReminder(after: date, interval: interval)
+        case .countdown:
+            if countdownRunning, let endDate = countdownEndDate {
+                let anchor = endDate.addingTimeInterval(-countdownTotal)
+                return nextIntervalReminder(after: date, anchor: anchor, interval: interval)
+            }
+            return nextWallClockReminder(after: date, interval: interval)
+        case .stopwatch:
+            if stopwatchRunning, let start = stopwatchStartDate {
+                let anchor = start.addingTimeInterval(-stopwatchAccumulated)
+                return nextIntervalReminder(after: date, anchor: anchor, interval: interval)
+            }
+            return nextWallClockReminder(after: date, interval: interval)
+        }
+    }
+
+    /// Returns the next wall-clock boundary at a multiple of `interval`.
+    /// e.g. interval=5min -> :00, :05, :10, :15, ...
+    private func nextWallClockReminder(after date: Date, interval: TimeInterval) -> Date {
+        let calendar = Calendar.current
+        let unit: Calendar.Component = interval <= 3600 ? .hour : .day
+        guard let periodStart = calendar.dateInterval(of: unit, for: date)?.start else {
+            return date.addingTimeInterval(interval)
+        }
+        let secondsSinceStart = date.timeIntervalSince(periodStart)
+        let completeIntervals = Int(secondsSinceStart / interval)
+        return periodStart.addingTimeInterval(TimeInterval(completeIntervals + 1) * interval)
+    }
+
+    /// Returns the next reminder at a multiple of `interval` measured from `anchor`.
+    private func nextIntervalReminder(after date: Date, anchor: Date, interval: TimeInterval) -> Date {
+        let elapsed = date.timeIntervalSince(anchor)
+        if elapsed < 0 {
+            return anchor.addingTimeInterval(interval)
+        }
+        let completeIntervals = Int(elapsed / interval)
+        return anchor.addingTimeInterval(TimeInterval(completeIntervals + 1) * interval)
     }
 
     private func updateReminder(now: Date) {
@@ -277,7 +342,12 @@ class TimerManager: ObservableObject {
             return
         }
 
+        // Keep the next fire time aligned to the active timer's anchor.
+        // When no timer is running, fall back to wall-clock boundaries.
         if nextReminderDate == nil {
+            rescheduleReminder(from: now)
+        } else if let scheduled = nextReminderDate, scheduled < now {
+            // We missed a fire (e.g. timer was paused); recompute from now.
             rescheduleReminder(from: now)
         }
 
@@ -317,6 +387,8 @@ class TimerManager: ObservableObject {
         guard let idx = modes.firstIndex(of: mode) else { return }
         let next = (idx + 1) % modes.count
         mode = modes[next]
+        // Mode change may switch the reminder anchor between wall-clock and timer-based.
+        if reminderEnabled { rescheduleReminder() }
     }
 
     func resetCurrent() {

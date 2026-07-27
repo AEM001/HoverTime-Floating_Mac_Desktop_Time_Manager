@@ -7,14 +7,45 @@ import AppKit
 import SwiftUI
 import Combine
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var panel: FloatingPanel?
+    var compactControlPanel: CompactControlPanel?
     var timerManager: TimerManager?
     var cancellables = Set<AnyCancellable>()
     private var saveTimer: Timer?
+    private var compactControlMouseMonitor: Any?
+    private var managedSettingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyApplicationIcon()
+        // The shared manager is a singleton — it always exists now.
+        if panel == nil {
+            setupPanel(with: TimerManager.shared)
+        }
+    }
+
+    /// Public entry point: create the panel (if needed) and reposition it to the
+    /// top-center of the main screen, just under the menu bar. Called from the
+    /// menu bar "Show Timer" action.
+    func showPanelAtTopCenter(manager: TimerManager) {
+        if panel == nil {
+            setupPanel(with: manager)
+        }
+        guard let panel = panel else { return }
+        positionPanelTopCenter(panel)
+        panel.orderFrontRegardless()
+    }
+
+    /// Places the panel horizontally centered, just below the menu bar.
+    private func positionPanelTopCenter(_ panel: FloatingPanel) {
+        guard let screen = NSScreen.main else { return }
+        let visible = screen.visibleFrame
+        let size = panel.frame.size
+        let x = visible.midX - size.width / 2
+        // Snug under the menu bar: 8pt gap from the top of visibleFrame.
+        let y = visible.maxY - size.height - 8
+        panel.setFrameOrigin(NSPoint(x: x, y: y))
+        panel.savePosition()
     }
 
     func setupPanel(with manager: TimerManager) {
@@ -29,9 +60,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let floatingPanel = FloatingPanel(contentView: hostingView)
         floatingPanel.isClickThrough = manager.clickThrough
         floatingPanel.alphaValue = CGFloat(manager.windowOpacity)
-        floatingPanel.clickAction = { [weak manager] in
-            guard let manager else { return }
-            ControlWindowManager.shared.toggle(manager: manager)
+        // NSPanel reliably receives mouseUp even when SwiftUI's tap gesture does
+        // not make it through the borderless hosting view. FloatingPanel filters
+        // out drags, so this restores the reliable quick-controls entry point.
+        floatingPanel.clickAction = { [weak self] in
+            self?.toggleCompactControls()
         }
         floatingPanel.orderFrontRegardless()
         panel = floatingPanel
@@ -75,6 +108,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self, weak floatingPanel, weak manager] _ in
                 guard let floatingPanel, let manager else { return }
                 self?.resizePanel(floatingPanel, for: manager)
+                if let compactControlPanel = self?.compactControlPanel {
+                    self?.resizeCompactControls(compactControlPanel, for: manager)
+                }
             }
             .store(in: &cancellables)
 
@@ -104,9 +140,76 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func togglePanel() {
         guard let panel = panel else { return }
         if panel.isVisible {
+            hideCompactControls()
             panel.orderOut(nil)
         } else {
+            // "Show" snaps to top-center, just under the menu bar.
+            positionPanelTopCenter(panel)
             panel.orderFrontRegardless()
+        }
+    }
+
+    /// Toggles the temporary controls anchored to the floating timer.
+    /// This is independent from the full settings window.
+    func toggleCompactControls() {
+        guard let timerManager else { return }
+        if let compactControlPanel, compactControlPanel.isVisible {
+            hideCompactControls()
+            return
+        }
+
+        if compactControlPanel == nil {
+            compactControlPanel = CompactControlPanel(manager: timerManager) { [weak self] in
+                self?.hideCompactControls()
+            }
+        }
+
+        guard let compactControlPanel else { return }
+        resizeCompactControls(compactControlPanel, for: timerManager)
+        positionCompactControls(compactControlPanel)
+        compactControlPanel.orderFrontRegardless()
+        installCompactControlMouseMonitor()
+    }
+
+    func hideCompactControls() {
+        compactControlPanel?.orderOut(nil)
+        removeCompactControlMouseMonitor()
+    }
+
+    private func positionCompactControls(_ controls: CompactControlPanel) {
+        guard let timerPanel = panel, let screen = timerPanel.screen ?? NSScreen.main else { return }
+        let size = controls.frame.size
+        let visible = screen.visibleFrame
+        var x = timerPanel.frame.midX - size.width / 2
+        var y = timerPanel.frame.minY - size.height - 10
+
+        x = min(max(x, visible.minX + 8), visible.maxX - size.width - 8)
+        if y < visible.minY + 8 {
+            y = timerPanel.frame.maxY + 10
+        }
+        controls.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+
+    private func resizeCompactControls(_ controls: CompactControlPanel, for manager: TimerManager) {
+        let height: CGFloat = manager.mode == .countdown ? 174 : 132
+        controls.setContentSize(NSSize(width: 300, height: height))
+    }
+
+    private func installCompactControlMouseMonitor() {
+        guard compactControlMouseMonitor == nil else { return }
+        compactControlMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            guard let self, let controls = self.compactControlPanel, controls.isVisible else { return event }
+            if event.window !== controls {
+                self.hideCompactControls()
+            }
+            return event
+        }
+    }
+
+    private func removeCompactControlMouseMonitor() {
+        if let monitor = compactControlMouseMonitor {
+            NSEvent.removeMonitor(monitor)
+            compactControlMouseMonitor = nil
         }
     }
 
@@ -117,20 +220,49 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func openSettingsWindow() {
-        // Find existing main window or create via SwiftUI
-        for window in NSApp.windows {
-            if window.title == "HoverTime Desktop Timer" {
-                window.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
-                return
-            }
+        if let window = settingsWindow {
+            bringSettingsWindowToFront(window)
+            return
         }
-        // Trigger the SwiftUI Window scene by sending the openWindow notification
-        NotificationCenter.default.post(name: .openSettings, object: nil)
+
+        // Do not depend on a SwiftUI Window scene being alive. This is called by
+        // both the menu bar and the non-activating quick-controls panel, so it
+        // must also work after the user has closed Settings.
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 580, height: 640),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "HoverTime Desktop Timer"
+        window.contentMinSize = NSSize(width: 560, height: 620)
+        window.contentView = NSHostingView(rootView: MainView(manager: TimerManager.shared))
+        window.delegate = self
+        window.center()
+        managedSettingsWindow = window
+        bringSettingsWindowToFront(window)
+    }
+
+    private var settingsWindow: NSWindow? {
+        managedSettingsWindow ?? NSApp.windows.first { $0.title == "HoverTime Desktop Timer" }
+    }
+
+    private func bringSettingsWindowToFront(_ window: NSWindow) {
+        NSApp.activate(ignoringOtherApps: true)
+        window.deminiaturize(nil)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        if notification.object as? NSWindow === managedSettingsWindow {
+            managedSettingsWindow = nil
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         saveTimer?.invalidate()
+        removeCompactControlMouseMonitor()
         timerManager?.saveSettings()
         panel?.savePosition()
     }
@@ -140,11 +272,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func applyApplicationIcon() {
-        guard let path = Bundle.main.path(forResource: "AppIcon", ofType: "png"),
-              let image = NSImage(contentsOfFile: path) else {
-            return
+        // Prefer the icns from the built bundle; fall back to png assets.
+        for ext in ["icns", "png"] {
+            if let path = Bundle.main.path(forResource: "AppIcon", ofType: ext),
+               let image = NSImage(contentsOfFile: path) {
+                NSApp.applicationIconImage = image
+                return
+            }
         }
-        NSApp.applicationIconImage = image
+        if let named = NSImage(named: "AppIcon") {
+            NSApp.applicationIconImage = named
+        }
     }
 
     private func resizePanel(_ panel: FloatingPanel, for manager: TimerManager) {
@@ -187,8 +325,4 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return NSFont(name: "Arial-BoldMT", size: size) ?? NSFont.systemFont(ofSize: size, weight: .semibold)
         }
     }
-}
-
-extension Notification.Name {
-    static let openSettings = Notification.Name("openSettings")
 }

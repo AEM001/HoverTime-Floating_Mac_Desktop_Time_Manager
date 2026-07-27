@@ -6,30 +6,11 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Control Window (NSPanel, decoupled from floating panel)
-
-class ControlPanelWindow: NSPanel {
-    init() {
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 430, height: 560),
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        titlebarAppearsTransparent = true
-        title = "HoverTime Desktop Timer Controls"
-        isReleasedWhenClosed = false
-        isMovableByWindowBackground = true
-        level = .floating
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        minSize = NSSize(width: 360, height: 360)
-    }
-}
-
 // MARK: - Main ContentView (floating display only)
 
 struct ContentView: View {
     @ObservedObject var manager: TimerManager
+    @State private var colonHovered = false
 
     var body: some View {
         VStack(spacing: manager.reminderIsActive ? 4 : 2) {
@@ -40,10 +21,28 @@ struct ContentView: View {
                     Text("LOOK UP")
                         .font(.system(size: 12, weight: .black, design: .rounded))
                 }
-                .foregroundStyle(.black)
+                .foregroundStyle(.black.opacity(0.82))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 3)
-                .background(reminderColor, in: Capsule())
+                .background(
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.65),
+                                    reminderColor,
+                                    reminderColor.opacity(0.92)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Color.white.opacity(0.75), lineWidth: 0.7)
+                        )
+                        .shadow(color: reminderColor.opacity(0.45), radius: 6, x: 0, y: 1)
+                )
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
 
@@ -90,6 +89,24 @@ struct ContentView: View {
                     .opacity(0.72)
             }
 
+            // Liquid glass specular highlight: a soft white sheen along the top edge.
+            RoundedRectangle(cornerRadius: 10)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.18),
+                            Color.white.opacity(0.04),
+                            Color.clear
+                        ],
+                        startPoint: .top,
+                        endPoint: .center
+                    )
+                )
+                .mask(
+                    RoundedRectangle(cornerRadius: 10)
+                        .padding(.horizontal, 0.5)
+                )
+
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.8)
 
@@ -104,14 +121,45 @@ struct ContentView: View {
     @ViewBuilder
     private var reminderOverlay: some View {
         if manager.reminderIsActive {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(reminderColor.opacity(0.16))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(reminderColor.opacity(0.92), lineWidth: 3)
-                )
-                .shadow(color: reminderColor.opacity(0.55), radius: 18, x: 0, y: 0)
-                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            ZStack {
+                // Warm golden wash layered under the glass for a liquid-glass glow.
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: reminderColor.opacity(0.08), location: 0.0),
+                                .init(color: reminderColor.opacity(0.22), location: 0.5),
+                                .init(color: reminderColor.opacity(0.06), location: 1.0)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+
+                // Inner specular stroke to simulate a glassy rim catching the light.
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.85),
+                                reminderColor.opacity(0.95),
+                                Color.white.opacity(0.55),
+                                reminderColor.opacity(0.90)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.6
+                    )
+
+                // Outer accent stroke.
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(reminderColor.opacity(0.55), lineWidth: 0.6)
+                    .blur(radius: 0.3)
+            }
+            .shadow(color: reminderColor.opacity(0.60), radius: 20, x: 0, y: 0)
+            .shadow(color: reminderColor.opacity(0.30), radius: 40, x: 0, y: 0)
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
         }
     }
 
@@ -124,16 +172,48 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Time display with colon-as-click-target
+
+    /// Renders the time string with a subtle hover affordance on each colon.
+    /// The enclosing FloatingPanel owns click detection so it remains reliable
+    /// for this borderless AppKit window.
+    @ViewBuilder
+    private func timeDisplay(_ text: String) -> some View {
+        let parts = text.components(separatedBy: ":")
+        HStack(spacing: 0) {
+            ForEach(Array(parts.enumerated()), id: \.offset) { idx, part in
+                if idx > 0 {
+                    colonHotspot
+                }
+                Text(part)
+                    .font(timeFont(size: manager.fontSize))
+                    .foregroundStyle(tintColor)
+                    .monospacedDigit()
+            }
+        }
+        .shadow(color: .white.opacity(0.30), radius: 1.0, x: 0, y: 0)
+        .shadow(color: glowColor, radius: manager.reminderIsActive ? 14 : 5, x: 0, y: 0)
+        .shadow(color: .black.opacity(0.58), radius: 2.0, x: 0, y: 1)
+        .fixedSize()
+    }
+
+    /// The colon opens the small temporary control panel.
+    private var colonHotspot: some View {
+        Text(":")
+            .font(timeFont(size: manager.fontSize))
+            .foregroundStyle(tintColor)
+            .monospacedDigit()
+            .contentShape(Rectangle())
+            .onHover { hovering in colonHovered = hovering }
+            .scaleEffect(colonHovered ? 1.12 : 1)
+            .animation(.easeOut(duration: 0.15), value: colonHovered)
+    }
+
     // MARK: - Clock View
 
     private var clockView: some View {
         VStack(spacing: 2) {
-            Text(manager.clockDisplayString)
-                .font(timeFont(size: manager.fontSize))
-                .foregroundStyle(tintColor)
-                .shadow(color: .white.opacity(0.30), radius: 1.0, x: 0, y: 0)
-                .shadow(color: glowColor, radius: manager.reminderIsActive ? 14 : 5, x: 0, y: 0)
-                .shadow(color: .black.opacity(0.58), radius: 2.0, x: 0, y: 1)
+            timeDisplay(manager.clockDisplayString)
             if manager.showDate {
                 Text(manager.dateDisplayString)
                     .font(timeFont(size: manager.fontSize * 0.3))
@@ -147,58 +227,13 @@ struct ContentView: View {
     // MARK: - Countdown View
 
     private var countdownView: some View {
-        Text(TimerManager.formatTime(manager.countdownRemaining, showSeconds: manager.showSeconds))
-            .font(timeFont(size: manager.fontSize))
-            .foregroundStyle(tintColor)
-            .shadow(color: .white.opacity(0.30), radius: 1.0, x: 0, y: 0)
-            .shadow(color: glowColor, radius: manager.reminderIsActive ? 14 : 5, x: 0, y: 0)
-            .shadow(color: .black.opacity(0.58), radius: 2.0, x: 0, y: 1)
+        timeDisplay(TimerManager.formatTime(manager.countdownRemaining, showSeconds: manager.showSeconds))
     }
 
     // MARK: - Stopwatch View
 
     private var stopwatchView: some View {
-        Text(manager.stopwatchDisplayString)
-            .font(timeFont(size: manager.fontSize))
-            .foregroundStyle(tintColor)
-            .shadow(color: .white.opacity(0.30), radius: 1.0, x: 0, y: 0)
-            .shadow(color: glowColor, radius: manager.reminderIsActive ? 14 : 5, x: 0, y: 0)
-            .shadow(color: .black.opacity(0.58), radius: 2.0, x: 0, y: 1)
-    }
-}
-
-// MARK: - Control Window Manager (singleton, decoupled from floating panel)
-
-class ControlWindowManager: NSObject {
-    static let shared = ControlWindowManager()
-    private var window: ControlPanelWindow?
-    private var hostingController: NSHostingController<ControlPanelView>?
-
-    func toggle(manager: TimerManager) {
-        if let w = window, w.isVisible {
-            w.orderOut(nil)
-            return
-        }
-        show(manager: manager)
-    }
-
-    func show(manager: TimerManager) {
-        if window == nil {
-            let win = ControlPanelWindow()
-            let view = ControlPanelView(manager: manager, onClose: { [weak win] in win?.orderOut(nil) })
-            let controller = NSHostingController(rootView: view)
-            win.contentViewController = controller
-            window = win
-            hostingController = controller
-        }
-        if let screen = NSScreen.main {
-            let frame = window?.frame ?? NSRect(x: 0, y: 0, width: 430, height: 560)
-            let x = screen.visibleFrame.midX - frame.width / 2
-            let y = screen.visibleFrame.midY - frame.height / 2
-            window?.setFrameOrigin(NSPoint(x: x, y: y))
-        }
-        window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        timeDisplay(manager.stopwatchDisplayString)
     }
 }
 
@@ -259,325 +294,5 @@ struct TimePickerField: View {
         }
         let prevIndex = currentIndex == 0 ? options.count - 1 : currentIndex - 1
         value = options[prevIndex]
-    }
-}
-
-// MARK: - Control Panel SwiftUI View
-
-struct ControlPanelView: View {
-    @ObservedObject var manager: TimerManager
-    var onClose: () -> Void
-
-    private var countdownHours: Binding<Int> {
-        Binding(
-            get: { Int(manager.countdownTotal / 3600) },
-            set: { h in
-                let m = Int(manager.countdownTotal.truncatingRemainder(dividingBy: 3600) / 60)
-                manager.countdownTotal = TimeInterval(h * 3600 + m * 60)
-                if !manager.countdownRunning && !manager.countdownPaused {
-                    manager.countdownRemaining = manager.countdownTotal
-                }
-                manager.saveSettings()
-            }
-        )
-    }
-
-    private var countdownMinutes: Binding<Int> {
-        Binding(
-            get: { Int(manager.countdownTotal.truncatingRemainder(dividingBy: 3600) / 60) },
-            set: { m in
-                let h = Int(manager.countdownTotal / 3600)
-                manager.countdownTotal = TimeInterval(h * 3600 + m * 60)
-                if !manager.countdownRunning && !manager.countdownPaused {
-                    manager.countdownRemaining = manager.countdownTotal
-                }
-                manager.saveSettings()
-            }
-        )
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                modeSection
-
-                if manager.mode != .clock {
-                    transportSection
-                }
-
-                glassSection(manager.mode.rawValue, systemImage: modeIcon) {
-                    modeSpecificControls
-                }
-
-                glassSection("Common", systemImage: "slider.horizontal.3", compact: true) {
-                    appearanceControls
-                }
-
-                Button("Close") { onClose() }
-                    .frame(maxWidth: .infinity)
-                    .buttonStyle(.bordered)
-                    .controlSize(.regular)
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(.ultraThinMaterial)
-        .frame(minWidth: 360, minHeight: 360)
-    }
-
-    private var modeSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker("", selection: $manager.mode) {
-                ForEach(TimeMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .onChange(of: manager.mode) { _, _ in manager.saveSettings() }
-        }
-        .padding(10)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private var transportSection: some View {
-        HStack(spacing: 8) {
-            Button(action: { manager.toggleStartPause() }) {
-                Label(isRunning ? "Pause" : "Start",
-                      systemImage: isRunning ? "pause.fill" : "play.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .controlSize(.regular)
-            .buttonStyle(.borderedProminent)
-
-            Button(action: { manager.resetCurrent() }) {
-                Label("Reset", systemImage: "arrow.counterclockwise")
-                    .frame(minWidth: 72)
-            }
-            .controlSize(.regular)
-            .buttonStyle(.bordered)
-        }
-    }
-
-    private var appearanceControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Label("Size", systemImage: "textformat.size")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 58, alignment: .leading)
-
-                HStack(spacing: 6) {
-                    Button {
-                        adjustFontSize(by: -5)
-                        manager.saveSettings()
-                    } label: {
-                        Image(systemName: "minus")
-                            .frame(width: 20, height: 20)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-
-                    Text("\(Int(manager.fontSize))")
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44)
-
-                    Button {
-                        adjustFontSize(by: 5)
-                        manager.saveSettings()
-                    } label: {
-                        Image(systemName: "plus")
-                            .frame(width: 20, height: 20)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            }
-
-            HStack(spacing: 10) {
-                Label("Font", systemImage: "textformat")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 58, alignment: .leading)
-
-                Picker("", selection: $manager.displayFont) {
-                    ForEach(DisplayFont.allCases, id: \.self) { font in
-                        Text(font.rawValue).tag(font)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .onChange(of: manager.displayFont) { _, _ in manager.saveSettings() }
-            }
-
-            HStack(spacing: 10) {
-                Label("Color", systemImage: "paintpalette")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 58, alignment: .leading)
-
-                HStack(spacing: 9) {
-                    ForEach(DisplayColor.allCases, id: \.self) { color in
-                        Button(action: { manager.displayColor = color; manager.saveSettings() }) {
-                            ZStack {
-                                Circle().fill(swatchColor(for: color))
-                                    .frame(width: 18, height: 18)
-                                    .shadow(color: swatchColor(for: color).opacity(0.35), radius: 3)
-                                if manager.displayColor == color {
-                                    Circle()
-                                        .stroke(.primary.opacity(0.72), lineWidth: 1.5)
-                                        .frame(width: 24, height: 24)
-                                }
-                            }
-                            .frame(width: 28, height: 26)
-                        }
-                        .buttonStyle(.plain)
-                        .help(color.rawValue)
-                    }
-                }
-
-                Spacer(minLength: 0)
-            }
-
-            HStack(spacing: 16) {
-                Toggle("Blur", isOn: $manager.showShadow)
-                    .onChange(of: manager.showShadow) { _, _ in manager.saveSettings() }
-                Toggle("Seconds", isOn: $manager.showSeconds)
-                    .onChange(of: manager.showSeconds) { _, _ in manager.saveSettings() }
-                Toggle("Click-through", isOn: $manager.clickThrough)
-                    .onChange(of: manager.clickThrough) { _, _ in manager.saveSettings() }
-            }
-            .font(.caption)
-
-            Divider()
-
-            Toggle("Visual interval reminder", isOn: $manager.reminderEnabled)
-                .onChange(of: manager.reminderEnabled) { _, _ in
-                    manager.rescheduleReminder()
-                    manager.saveSettings()
-                }
-            if manager.reminderEnabled {
-                Stepper("Every \(manager.reminderIntervalMinutes) min", value: $manager.reminderIntervalMinutes, in: 1...120, step: 1)
-                    .onChange(of: manager.reminderIntervalMinutes) { _, _ in
-                        manager.rescheduleReminder()
-                        manager.saveSettings()
-                    }
-                Text("Counts from app launch, or from the moment you enable/change this setting.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            Toggle("Show in Dock", isOn: $manager.showDockIcon)
-                .onChange(of: manager.showDockIcon) { _, _ in manager.saveSettings() }
-        }
-    }
-
-    @ViewBuilder
-    private var modeSpecificControls: some View {
-        switch manager.mode {
-        case .clock:
-            VStack(alignment: .leading, spacing: 10) {
-                Toggle("24-hour format", isOn: $manager.use24Hour)
-                Toggle("Show date", isOn: $manager.showDate)
-            }
-            .onChange(of: manager.use24Hour) { _, _ in manager.saveSettings() }
-            .onChange(of: manager.showDate) { _, _ in manager.saveSettings() }
-
-        case .countdown:
-            countdownControls
-
-        case .stopwatch:
-            Text("Elapsed time follows the global seconds setting.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var countdownControls: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if manager.countdownRunning || manager.countdownPaused {
-                HStack {
-                    Text("Remaining")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(TimerManager.formatTime(manager.countdownRemaining, showSeconds: manager.showSeconds))
-                        .font(.system(.body, design: .monospaced))
-                }
-            } else {
-                HStack(spacing: 18) {
-                    TimePickerField(label: "Hours", value: countdownHours, options: Array(0...23), suffix: "h")
-                    Text(":").font(.title2).foregroundStyle(.secondary)
-                    TimePickerField(label: "Minutes", value: countdownMinutes, options: Array(stride(from: 0, through: 55, by: 5)), suffix: "m")
-                    Spacer(minLength: 0)
-                }
-            }
-
-            ViewThatFits {
-                HStack(spacing: 8) { presetButtons }
-                VStack(alignment: .leading, spacing: 8) { presetButtons }
-            }
-
-            Toggle("Auto-repeat", isOn: $manager.countdownAutoRepeat)
-                .onChange(of: manager.countdownAutoRepeat) { _, _ in manager.saveSettings() }
-            Toggle("Sound notifications", isOn: $manager.soundEnabled)
-                .onChange(of: manager.soundEnabled) { _, _ in manager.saveSettings() }
-        }
-    }
-
-    private var presetButtons: some View {
-        ForEach([5, 15, 25, 45, 60], id: \.self) { mins in
-            Button("\(mins)m") {
-                manager.setCountdownPreset(mins)
-                manager.saveSettings()
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(manager.countdownRunning)
-        }
-    }
-
-    private var modeIcon: String {
-        switch manager.mode {
-        case .clock: return "clock"
-        case .countdown: return "timer"
-        case .stopwatch: return "stopwatch"
-        }
-    }
-
-    private func glassSection<Content: View>(
-        _ title: String,
-        systemImage: String,
-        compact: Bool = false,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: compact ? 8 : 10) {
-            Label(title, systemImage: systemImage)
-                .font(compact ? .subheadline.weight(.semibold) : .headline)
-                .foregroundStyle(.primary.opacity(0.82))
-            content()
-        }
-        .padding(compact ? 10 : 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private var isRunning: Bool {
-        switch manager.mode {
-        case .clock: return false
-        case .countdown: return manager.countdownRunning
-        case .stopwatch: return manager.stopwatchRunning
-        }
-    }
-
-    private func swatchColor(for color: DisplayColor) -> Color {
-        switch color {
-        case .porcelain: return Color(red: 0.92, green: 0.90, blue: 0.84)
-        case .graphite: return Color(red: 0.76, green: 0.78, blue: 0.76)
-        case .sage: return Color(red: 0.68, green: 0.76, blue: 0.67)
-        case .frost: return Color(red: 0.62, green: 0.74, blue: 0.82)
-        }
-    }
-
-    private func adjustFontSize(by delta: CGFloat) {
-        let rounded = (manager.fontSize / 5).rounded() * 5
-        manager.fontSize = min(200, max(40, rounded + delta))
     }
 }

@@ -68,7 +68,8 @@ swiftc -target arm64-apple-macosx15.0 \
 | `AppDelegate.swift` | Floating panel setup, Dock visibility, app lifecycle |
 | `FloatingPanel.swift` | Always-on-top transparent `NSPanel` |
 | `TimerManager.swift` | Clock, countdown, stopwatch, reminders, persistence |
-| `ContentView.swift` | Floating timer display and compact controls |
+| `ContentView.swift` | Floating timer display and colon click target |
+| `CompactControlPanel.swift` | Temporary quick controls panel |
 | `SettingsView.swift` | Full settings window |
 | `MenuBarView.swift` | Menu bar commands |
 
