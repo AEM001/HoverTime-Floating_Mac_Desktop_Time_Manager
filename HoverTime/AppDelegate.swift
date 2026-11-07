@@ -313,15 +313,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 }
 
-// Event-driven one-shot scheduling: 45 s while learning, 120 s when stable.
-// Only scalar history is retained. No stream or on-disk screenshots.
+// Sample once on enable, then once per minute. No history or capture stream.
 @MainActor
 final class BackdropSampler {
     private var timer: Timer?
     private var generation = 0
-    private var policy = BackdropPolicy()
-    private var anchor: NSPoint?
-    private var failureDelay: TimeInterval = 150
     private var cachedFilter: SCContentFilter?
     private var cachedDisplay: UInt32?
     private var filterDate = Date.distantPast
@@ -329,7 +325,6 @@ final class BackdropSampler {
     func start(panel: FloatingPanel, manager: TimerManager) {
         timer?.invalidate()
         generation += 1
-        policy.reset()
         cachedFilter = nil
         guard manager.adaptiveColor else { manager.adaptiveStatus = "Off"; return }
         let token = generation
@@ -344,20 +339,15 @@ final class BackdropSampler {
                 await self.tick(panel: panel, manager: manager, token: token)
             }
         }
-        timer?.tolerance = delay * 0.15
+        timer?.tolerance = 3
     }
 
     private func tick(panel: FloatingPanel, manager: TimerManager, token: Int) async {
         guard token == generation, manager.adaptiveColor else { return }
-        var next: TimeInterval = 120
-        defer { schedule(panel: panel, manager: manager, token: token, after: next) }
-        // Never capture while the user is editing or moving the widget.
-        guard panel.isVisible,
-              NSEvent.pressedMouseButtons == 0,
-              (NSApp.delegate as? AppDelegate)?.compactControlPanel?.isVisible != true else { return }
+        defer { schedule(panel: panel, manager: manager, token: token, after: 60) }
+        guard panel.isVisible, NSEvent.pressedMouseButtons == 0 else { return }
         guard CGPreflightScreenCaptureAccess() else {
             setStatus("Enable Screen Recording in System Settings, then relaunch", manager: manager)
-            next = 300
             return
         }
         do {
@@ -394,12 +384,6 @@ final class BackdropSampler {
                 return true
             }
             guard rendered else { return }
-            let now = Date()
-            let currentAnchor = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
-            if anchor != currentAnchor {
-                policy.reset()
-                anchor = currentAnchor
-            }
             let luminance = stride(from: 0, to: pixels.count, by: 4).reduce(0.0) { sum, i in
                 func linear(_ v: UInt8) -> Double {
                     let c = Double(v) / 255
@@ -407,18 +391,13 @@ final class BackdropSampler {
                 }
                 return sum + 0.2126 * linear(pixels[i]) + 0.7152 * linear(pixels[i+1]) + 0.0722 * linear(pixels[i+2])
             } / 256
-            let decision = policy.observe(luminance: luminance, now: now, currentDark: manager.adaptiveDarkBackground)
-            if decision.dark != manager.adaptiveDarkBackground { manager.adaptiveDarkBackground = decision.dark }
-            failureDelay = 150
-            next = decision.interval
-            if ProcessInfo.processInfo.isLowPowerModeEnabled { next = max(next, 120) }
-            setStatus(next >= 120 ? "Stable · checking every 2 minutes" : "Learning · 5 minute history", manager: manager)
+            let lightInk = BackdropPolicy.useLightInk(backgroundLuminance: luminance)
+            if lightInk != manager.adaptiveDarkBackground { manager.adaptiveDarkBackground = lightInk }
+            setStatus("High contrast · updates every minute", manager: manager)
         } catch {
             guard token == generation else { return }
             cachedFilter = nil
-            failureDelay = min(900, failureDelay * 2)
-            next = failureDelay
-            setStatus("Sampling paused · using last palette", manager: manager)
+            setStatus("Capture unavailable · retrying in 1 minute", manager: manager)
         }
     }
 
@@ -429,42 +408,14 @@ final class BackdropSampler {
 
 // BEGIN BACKDROP POLICY — pure scalar logic, independently verifiable.
 struct BackdropPolicy {
-    private var samples: [(Date, Double)] = []
-    private var lastSwitch = Date.distantPast
-    private var candidate: Bool?
-    private var candidateSince = Date.distantPast
-    private var stableCount = 0
-
-    mutating func reset() {
-        samples.removeAll()
-        candidate = nil
-        stableCount = 0
-        // Preserve dwell time even when the user moves the widget.
-    }
-
-    mutating func observe(luminance: Double, now: Date, currentDark: Bool) -> (dark: Bool, interval: TimeInterval) {
-        if let previous = samples.last, now.timeIntervalSince(previous.0) > 300 { reset() }
-        stableCount = abs((samples.last?.1 ?? luminance) - luminance) < 0.035 ? stableCount + 1 : 0
-        samples.append((now, luminance))
-        samples.removeAll { now.timeIntervalSince($0.0) > 300 }
-        let sorted = samples.map { $0.1 }.sorted()
-        let middle = sorted.count / 2
-        let median = sorted.count.isMultiple(of: 2) ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
-        // Schmitt trigger + persistence + dwell time. Neither isolated samples
-        // nor threshold noise can immediately change the output.
-        var output = currentDark
-        let desired = currentDark ? median < 0.32 : median < 0.18
-        if desired != currentDark {
-            if candidate != desired { candidate = desired; candidateSince = now }
-            if now.timeIntervalSince(candidateSince) >= 60, now.timeIntervalSince(lastSwitch) >= 180 {
-                output = desired
-                lastSwitch = now
-                candidate = nil
-            }
-        } else {
-            candidate = nil
-        }
-        return (output, stableCount >= 3 && candidate == nil ? 120 : 45)
+    /// Choose whichever of white/black has greater WCAG luminance contrast.
+    /// Direct comparison also handles middle-gray backgrounds where a simple
+    /// RGB inversion would be nearly indistinguishable from the background.
+    static func useLightInk(backgroundLuminance: Double) -> Bool {
+        let luminance = min(1, max(0, backgroundLuminance))
+        let whiteContrast = 1.05 / (luminance + 0.05)
+        let blackContrast = (luminance + 0.05) / 0.05
+        return whiteContrast > blackContrast
     }
 }
 // END BACKDROP POLICY

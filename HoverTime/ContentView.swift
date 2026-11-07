@@ -80,7 +80,9 @@ struct ContentView: View {
     @ObservedObject var manager: TimerManager
 
     private var isDark: Bool { manager.usesLightInk }
-    private var foreground: NSColor { manager.displayColor.adaptiveColor(dark: isDark) }
+    private var foreground: NSColor {
+        manager.adaptiveColor ? (isDark ? .white : .black) : manager.displayColor.adaptiveColor(dark: isDark)
+    }
     private var surface: Color {
         isDark ? Color(red: 0.10, green: 0.14, blue: 0.21) : Color(red: 0.96, green: 0.97, blue: 0.99)
     }
@@ -92,7 +94,7 @@ struct ContentView: View {
     private var dateRun: TimeGlyphRun {
         TimeGlyphRun(text: manager.dateDisplayString,
                      font: .systemFont(ofSize: max(10, manager.fontSize * 0.21), weight: .medium),
-                     color: foreground.withAlphaComponent(0.72))
+                     color: foreground.withAlphaComponent(manager.adaptiveColor ? 1 : 0.72))
     }
     private var reminderRun: TimeGlyphRun {
         TimeGlyphRun(text: "LOOK UP · REST YOUR EYES", font: .systemFont(ofSize: max(9, manager.fontSize * 0.16), weight: .semibold),

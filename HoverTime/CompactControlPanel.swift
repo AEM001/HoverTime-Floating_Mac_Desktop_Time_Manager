@@ -231,6 +231,7 @@ struct AppearanceControls: View {
                     .accessibilityAddTraits(manager.displayColor == color ? .isSelected : [])
                 }
             }
+            .disabled(manager.adaptiveColor)
             HStack {
                 Image(systemName: "textformat.size.smaller").foregroundStyle(.secondary)
                 Slider(value: binding(\.fontSize), in: 40...200, step: 5) { Text("Font size") }
@@ -243,7 +244,7 @@ struct AppearanceControls: View {
                     ForEach(DisplayFont.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.labelsHidden().frame(width: 165)
             }
-            Toggle("Adaptive background", isOn: binding(\.adaptiveColor)).font(.system(size: 12)).toggleStyle(.switch).controlSize(.mini)
+            Toggle("Auto contrast · every minute", isOn: binding(\.adaptiveColor)).font(.system(size: 12)).toggleStyle(.switch).controlSize(.mini)
                 .onChange(of: manager.adaptiveColor) { _, enabled in
                     manager.saveSettings()
                     if enabled && !CGPreflightScreenCaptureAccess() { CGRequestScreenCaptureAccess() }

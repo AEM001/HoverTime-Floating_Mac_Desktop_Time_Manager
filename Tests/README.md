@@ -36,8 +36,8 @@ For adaptation logic only, run `bash Tests/run-backdrop-policy-checks.sh`.
 This extracts the production scalar policy, compiles it on Linux with the shared
 macOS cross compiler, and runs its command-line assertions locally. It creates
 no windows, requests no capture permissions and takes no screenshots. Checks
-cover persistence, hysteresis, minimum dwell across moves, stable-input backoff,
-stale history after a visibility gap, and alternating threshold noise.
+cover black/white contrast selection at 1001 background luminance values,
+including middle gray, and verify that preceding samples do not affect selection.
 
 
 `bash Tests/run-control-panel-update-checks.sh` extracts the production

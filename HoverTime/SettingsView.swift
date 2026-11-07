@@ -103,7 +103,7 @@ struct SettingsView: View {
                 }
             }
             .pickerStyle(.segmented)
-            Text("Paired colors adapt gently to the background. Outline keeps the centers of the digits clear.")
+            Text("Auto contrast chooses black or white every minute. Manual palettes return when it is off. Outline keeps digit centers clear.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

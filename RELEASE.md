@@ -1,5 +1,12 @@
 # Release Notes
 
+## 2026-11-07 simple automatic contrast
+
+- Replace adaptive history, hysteresis, dwell and variable polling with a direct current-region contrast choice once per minute (plus an initial attempt on enable). Choose black or white by whichever has greater luminance contrast.
+- Preserve all manual palettes and tone settings, restoring them when automatic contrast is off; disable manual palette editing while automatic mode is enabled.
+- Retain tiny regional samples, self-exclusion, cached content filters, no image retention and no continuous capture stream. Hidden or actively dragged displays skip a tick. Timers allow three seconds of scheduling tolerance.
+- Linux cross build and 1001-value contrast-selection checks passed. No screenshot or UI tests performed.
+
 ## 2026-11-07 mode selection fix
 
 - Give all three mode cards a full rectangular interaction shape and fixed height, including whitespace around the shorter Clock label.
