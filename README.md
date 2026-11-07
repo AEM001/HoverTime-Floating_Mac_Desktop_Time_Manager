@@ -9,7 +9,8 @@ Floating desktop clock, countdown, and stopwatch for macOS. HoverTime stays abov
 - Floating always-on-top timer window for macOS
 - Clock, countdown, and stopwatch modes
 - Visible across Spaces and fullscreen apps
-- Elegant low-distraction typography with refined color themes
+- Manual light and deep color palettes, adjustable size and typeface
+- Optional automatic black/white contrast based on the floating region, checked once per minute
 - Click the floating timer to open compact controls
 - Draggable position with automatic position memory
 - Optional click-through mode
@@ -77,10 +78,8 @@ swiftc -target arm64-apple-macosx15.0 \
 
 See [RELEASE.md](RELEASE.md) for the current release notes.
 
-## Screenshots
+## Screenshot
 
-<img src="show/Screenshot%202026-06-20%20at%2012.38.21.png" width="200" alt="Floating clock">
-<img src="show/Screenshot%202026-06-20%20at%2012.38.36.png" width="200" alt="Countdown controls">
-<img src="show/Screenshot%202026-06-20%20at%2012.38.42.png" width="200" alt="Appearance settings">
-<img src="show/Screenshot%202026-06-20%20at%2012.38.48.png" width="200" alt="Reminder and Dock settings">
-<img src="show/Screenshot%202026-06-20%20at%2012.39.02.png" width="200" alt="Desktop timer workflow">
+<a href="show/hovertime-controls.png"><img src="show/hovertime-controls.png" width="280" alt="HoverTime floating clock and quick controls with automatic contrast enabled"></a>
+
+Click the image to view it at full size.
