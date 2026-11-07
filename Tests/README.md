@@ -46,3 +46,8 @@ model. It checks that time ticks produce no panel configuration updates, setting
 and running-state changes propagate, and identical settings do not refresh the
 panel. Compilation runs on Linux; the CLI assertions run locally without windows
 or screenshots. This does not validate compositor behavior on the desktop.
+
+The control-panel subscription checks also exercise all directed mode transitions,
+including Clock in both directions, with time publications interleaved. Each
+transition must propagate after exactly one assignment. Pointer hit regions and
+first-click delivery still require manual desktop verification.

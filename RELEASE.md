@@ -1,5 +1,12 @@
 # Release Notes
 
+## 2026-11-07 mode selection fix
+
+- Give all three mode cards a full rectangular interaction shape and fixed height, including whitespace around the shorter Clock label.
+- Accept the first click in the quick-control hosting view and make the nonactivating panel key when opened.
+- Reserve playback and preset space in every mode, disabling interaction and accessibility for hidden controls. Constrain the timer readout to fit beside playback controls without widening the card.
+- Linux cross build and subscription checks passed, including every directed Clock/countdown/stopwatch transition with interleaved clock publications. No screenshot or pointer-driven UI tests performed.
+
 ## 2026-11-07 panel rendering fix
 
 - Isolate ticking time into a fixed-size readout. The panel and appearance controls observe deduplicated configuration snapshots rather than every half-second timer publication.

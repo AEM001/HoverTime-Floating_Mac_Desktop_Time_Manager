@@ -155,6 +155,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let compactControlPanel else { return }
         resizeCompactControls(compactControlPanel, for: timerManager)
         positionCompactControls(compactControlPanel)
+        compactControlPanel.makeKeyAndOrderFront(nil)
         compactControlPanel.orderFrontRegardless()
         installCompactControlMouseMonitor()
     }

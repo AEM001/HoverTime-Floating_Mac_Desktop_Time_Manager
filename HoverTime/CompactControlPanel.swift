@@ -14,7 +14,7 @@ final class CompactControlPanel: NSPanel {
         closeAction: @escaping () -> Void,
         openSettingsAction: @escaping () -> Void
     ) {
-        let hostingView = NSHostingView(
+        let hostingView = FirstClickHostingView(
             rootView: CompactControlView(
                 manager: manager,
                 closeAction: closeAction,
@@ -79,7 +79,9 @@ struct CompactControlView: View {
                             Image(systemName: mode == .clock ? "clock" : mode == .countdown ? "timer" : "stopwatch")
                             Text(mode.rawValue).font(.system(size: 11, weight: .semibold))
                         }
-                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 60)
+                        .contentShape(.interaction, Rectangle())
                         .foregroundStyle(manager.mode == mode ? Color.accentColor : Color.secondary)
                         .background(manager.mode == mode ? Color.accentColor.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
                     }.buttonStyle(.plain)
@@ -94,23 +96,29 @@ struct CompactControlView: View {
                         ControlTimeReadout(manager: manager)
                     }
                     Spacer()
-                    if manager.mode != .clock {
+                    HStack(spacing: 10) {
                         Button(action: manager.toggleStartPause) {
                             Image(systemName: isRunning ? "pause.fill" : "play.fill").frame(width: 26, height: 30)
                         }.buttonStyle(.borderedProminent).clipShape(Circle()).help(isRunning ? "Pause" : "Start")
                         Button(action: manager.resetCurrent) { Image(systemName: "arrow.counterclockwise") }
                             .buttonStyle(.plain).help("Reset")
                     }
+                    .frame(width: 76, height: 42)
+                    .opacity(manager.mode == .clock ? 0 : 1)
+                    .allowsHitTesting(manager.mode != .clock)
+                    .accessibilityHidden(manager.mode == .clock)
                 }
-                if manager.mode == .countdown {
-                    HStack(spacing: 8) {
+                HStack(spacing: 8) {
                         presetButton(5, title: "5m")
                         adjustButton(direction: -1)
                         presetButton(25, title: "25m")
                         adjustButton(direction: 1)
                         presetButton(60, title: "1h")
-                    }
                 }
+                .frame(height: 24)
+                .opacity(manager.mode == .countdown ? 1 : 0)
+                .allowsHitTesting(manager.mode == .countdown)
+                .accessibilityHidden(manager.mode != .countdown)
             }.padding(16).background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 16))
             AppearanceControls(manager: manager)
             HStack {
@@ -247,6 +255,11 @@ struct AppearanceControls: View {
     }
 }
 
+/// The click that focuses this nonactivating panel must also operate its controls.
+private final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 /// Solid AppKit backing; time changes cannot repaint or relayout this surface.
 private final class ControlPanelSurface: NSView {
     override var allowsVibrancy: Bool { false }
@@ -277,7 +290,7 @@ private struct ControlTimeReadout: View {
     var body: some View {
         Text(text).font(.system(size: 32, weight: .medium, design: .rounded))
             .monospacedDigit().lineLimit(1).minimumScaleFactor(0.65)
-            .frame(width: 215, height: 42, alignment: .leading)
+            .frame(width: 196, height: 42, alignment: .leading)
             .transaction { $0.animation = nil; $0.disablesAnimations = true }
     }
 }

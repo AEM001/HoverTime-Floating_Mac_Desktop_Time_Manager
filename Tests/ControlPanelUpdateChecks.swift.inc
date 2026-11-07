@@ -45,6 +45,17 @@ struct ControlPanelUpdateChecks {
         manager.fontSize = 100
         drain()
         precondition(changes == 2, "Duplicate settings caused unnecessary updates")
+        // Clock must propagate in both directions with one assignment, even
+        // when time ticks surround the selection on the same run-loop turn.
+        for mode: TimeMode in [.clock, .stopwatch, .clock, .countdown, .stopwatch, .countdown, .clock] {
+            let before = changes
+            manager.currentTime = Date()
+            manager.mode = mode
+            manager.currentTime = Date()
+            drain()
+            precondition(updates.configuration.mode == mode && changes == before + 1,
+                         "Mode selection was lost or required another assignment")
+        }
         withExtendedLifetime(subscription) {}
         print("Control panel updates: ticks isolated, settings responsive, duplicate updates suppressed")
     }
