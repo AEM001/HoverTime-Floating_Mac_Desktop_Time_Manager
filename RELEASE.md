@@ -1,5 +1,12 @@
 # Release Notes
 
+## 2026-11-07 panel rendering fix
+
+- Isolate ticking time into a fixed-size readout. The panel and appearance controls observe deduplicated configuration snapshots rather than every half-second timer publication.
+- Draw the solid rounded background in a stationary AppKit view, independent of SwiftUI time updates; disable implicit panel animations and reserve stable space for status text.
+- Remove all control-window resizing from the timer publication subscription.
+- Linux cross build and nonvisual subscription checks passed: time ticks produce zero configuration updates, while font and mode changes remain responsive. No screenshot or UI tests performed.
+
 ## 2026-11-07 follow-up
 
 - Expose manual Deep / Light palette selection, including light blue, cream, lilac, mint and ice cyan. Swatches show the effective tone.

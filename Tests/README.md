@@ -38,3 +38,11 @@ macOS cross compiler, and runs its command-line assertions locally. It creates
 no windows, requests no capture permissions and takes no screenshots. Checks
 cover persistence, hysteresis, minimum dwell across moves, stable-input backoff,
 stale history after a visibility gap, and alternating threshold noise.
+
+
+`bash Tests/run-control-panel-update-checks.sh` extracts the production
+configuration subscription and exercises it with a minimal observable input
+model. It checks that time ticks produce no panel configuration updates, settings
+and running-state changes propagate, and identical settings do not refresh the
+panel. Compilation runs on Linux; the CLI assertions run locally without windows
+or screenshots. This does not validate compositor behavior on the desktop.

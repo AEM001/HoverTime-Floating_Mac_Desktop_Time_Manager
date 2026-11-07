@@ -89,9 +89,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .sink { [weak self, weak floatingPanel, weak manager] in
                 guard let self, let floatingPanel, let manager else { return }
                 self.resizePanel(floatingPanel, for: manager)
-                if let controls = self.compactControlPanel, controls.isVisible {
-                    self.resizeCompactControls(controls, for: manager)
-                }
             }
             .store(in: &cancellables)
 
