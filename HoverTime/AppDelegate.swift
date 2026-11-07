@@ -6,18 +6,23 @@
 import AppKit
 import SwiftUI
 import Combine
+import ScreenCaptureKit
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var panel: FloatingPanel?
     var compactControlPanel: CompactControlPanel?
     var timerManager: TimerManager?
     var cancellables = Set<AnyCancellable>()
+    private let backdropSampler = BackdropSampler()
     private var saveTimer: Timer?
     private var compactControlMouseMonitor: Any?
+    private var globalControlMouseMonitor: Any?
     private var managedSettingsWindow: NSWindow?
+    private var menuBarController: MenuBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyApplicationIcon()
+        menuBarController = MenuBarController(manager: TimerManager.shared, appDelegate: self)
         // The shared manager is a singleton — it always exists now.
         if panel == nil {
             setupPanel(with: TimerManager.shared)
@@ -56,20 +61,39 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let hostingView = NSHostingView(rootView: contentView)
         hostingView.frame = NSRect(x: 0, y: 0, width: 300, height: 84)
         hostingView.autoresizingMask = [.width, .height]
+        hostingView.sizingOptions = []
 
         let floatingPanel = FloatingPanel(contentView: hostingView)
         floatingPanel.isClickThrough = manager.clickThrough
         floatingPanel.alphaValue = CGFloat(manager.windowOpacity)
-        // NSPanel reliably receives mouseUp even when SwiftUI's tap gesture does
-        // not make it through the borderless hosting view. FloatingPanel filters
-        // out drags, so this restores the reliable quick-controls entry point.
         floatingPanel.clickAction = { [weak self] in
             self?.toggleCompactControls()
         }
         floatingPanel.orderFrontRegardless()
         panel = floatingPanel
+        floatingPanel.delegate = self
+        backdropSampler.start(panel: floatingPanel, manager: manager)
+        manager.$adaptiveColor.removeDuplicates().dropFirst().sink { [weak self, weak floatingPanel, weak manager] _ in
+            DispatchQueue.main.async {
+                guard let self, let floatingPanel, let manager else { return }
+                self.backdropSampler.start(panel: floatingPanel, manager: manager)
+            }
+        }.store(in: &cancellables)
         applyDockIconVisibility(manager.showDockIcon)
         resizePanel(floatingPanel, for: manager)
+        floatingPanel.constrainToScreen()
+
+        manager.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak floatingPanel, weak manager] in
+                guard let self, let floatingPanel, let manager else { return }
+                self.resizePanel(floatingPanel, for: manager)
+                if let controls = self.compactControlPanel, controls.isVisible {
+                    self.resizeCompactControls(controls, for: manager)
+                    self.positionCompactControls(controls)
+                }
+            }
+            .store(in: &cancellables)
 
         manager.$clickThrough
             .sink { [weak floatingPanel] value in
@@ -80,44 +104,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         manager.$windowOpacity
             .sink { [weak floatingPanel] value in
                 floatingPanel?.alphaValue = CGFloat(value)
-            }
-            .store(in: &cancellables)
-
-        manager.$fontSize
-            .sink { [weak self, weak floatingPanel, weak manager] _ in
-                guard let floatingPanel, let manager else { return }
-                self?.resizePanel(floatingPanel, for: manager)
-            }
-            .store(in: &cancellables)
-
-        manager.$showDate
-            .sink { [weak self, weak floatingPanel, weak manager] _ in
-                guard let floatingPanel, let manager else { return }
-                self?.resizePanel(floatingPanel, for: manager)
-            }
-            .store(in: &cancellables)
-
-        manager.$showSeconds
-            .sink { [weak self, weak floatingPanel, weak manager] _ in
-                guard let floatingPanel, let manager else { return }
-                self?.resizePanel(floatingPanel, for: manager)
-            }
-            .store(in: &cancellables)
-
-        manager.$mode
-            .sink { [weak self, weak floatingPanel, weak manager] _ in
-                guard let floatingPanel, let manager else { return }
-                self?.resizePanel(floatingPanel, for: manager)
-                if let compactControlPanel = self?.compactControlPanel {
-                    self?.resizeCompactControls(compactControlPanel, for: manager)
-                }
-            }
-            .store(in: &cancellables)
-
-        manager.$reminderActiveUntil
-            .sink { [weak self, weak floatingPanel, weak manager] _ in
-                guard let floatingPanel, let manager else { return }
-                self?.resizePanel(floatingPanel, for: manager)
             }
             .store(in: &cancellables)
 
@@ -143,8 +129,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             hideCompactControls()
             panel.orderOut(nil)
         } else {
-            // "Show" snaps to top-center, just under the menu bar.
-            positionPanelTopCenter(panel)
+            panel.constrainToScreen()
             panel.orderFrontRegardless()
         }
     }
@@ -193,30 +178,47 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if y < visible.minY + 8 {
             y = timerPanel.frame.maxY + 10
         }
+        y = max(visible.minY + 8, min(y, visible.maxY - size.height - 8))
         controls.setFrameOrigin(NSPoint(x: x, y: y))
     }
 
     private func resizeCompactControls(_ controls: CompactControlPanel, for manager: TimerManager) {
-        let height: CGFloat = manager.mode == .countdown ? 174 : 132
-        controls.setContentSize(NSSize(width: 300, height: height))
+        let height: CGFloat = manager.mode == .countdown ? 590 : 550
+        controls.setContentSize(NSSize(width: 380, height: height))
     }
 
     private func installCompactControlMouseMonitor() {
         guard compactControlMouseMonitor == nil else { return }
         compactControlMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let self, let controls = self.compactControlPanel, controls.isVisible else { return event }
-            if event.window !== controls {
+            if event.window !== controls && event.window !== self.panel {
                 self.hideCompactControls()
             }
             return event
         }
+        globalControlMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.hideCompactControls()
+        }
     }
 
     private func removeCompactControlMouseMonitor() {
+        if let monitor = globalControlMouseMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalControlMouseMonitor = nil
+        }
         if let monitor = compactControlMouseMonitor {
             NSEvent.removeMonitor(monitor)
             compactControlMouseMonitor = nil
         }
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === panel else { return }
+        hideCompactControls()
+    }
+
+    func applicationDidChangeScreenParameters(_ notification: Notification) {
+        panel?.constrainToScreen()
     }
 
     // When user clicks the Dock icon, open Settings
@@ -303,43 +305,106 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func resizePanel(_ panel: FloatingPanel, for manager: TimerManager) {
-        let size = manager.fontSize
-        let dateExtra: CGFloat = manager.mode == .clock && manager.showDate ? size * 0.34 : 0
-        let reminderExtra: CGFloat = manager.reminderIsActive ? 34 : 0
-        let horizontalPadding: CGFloat = manager.reminderIsActive ? 36 : 24
-        let measuredWidth = measuredDisplayWidth(for: manager)
-        let reminderWidth: CGFloat = manager.reminderIsActive ? 98 : 0
-        let width = ceil(max(measuredWidth, reminderWidth) + horizontalPadding)
-        let height = max(52, size * 1.18 + dateExtra + reminderExtra)
-        panel.setContentSize(NSSize(width: width, height: height))
-    }
-
-    private func measuredDisplayWidth(for manager: TimerManager) -> CGFloat {
-        let text: String
-        switch manager.mode {
-        case .clock:
-            text = manager.clockDisplayString
-        case .countdown:
-            text = TimerManager.formatTime(manager.countdownRemaining, showSeconds: manager.showSeconds)
-        case .stopwatch:
-            text = manager.stopwatchDisplayString
+        if panel.contentView is NSHostingView<ContentView> {
+            let size = ContentView(manager: manager).displaySize
+            if size.width > 0, size.height > 0, size != panel.frame.size {
+                let top = panel.frame.maxY
+                panel.setContentSize(size)
+                panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: top - size.height))
+                panel.constrainToScreen()
+            }
+            return
         }
+    }
+}
 
-        let font = displayNSFont(for: manager)
-        return (text as NSString).size(withAttributes: [.font: font]).width
+// One tiny region every 30 seconds; no stream, no images retained or written.
+@MainActor
+final class BackdropSampler {
+    private var timer: Timer?
+    private var busy = false
+    private var samples: [(Date, Double)] = []
+    private var lastOrigin: NSPoint?
+    private var lastSwitch = Date.distantPast
+
+    func start(panel: FloatingPanel, manager: TimerManager) {
+        timer?.invalidate()
+        samples.removeAll()
+        lastSwitch = .distantPast
+        guard manager.adaptiveColor else { manager.adaptiveStatus = "Off"; return }
+        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self, weak panel, weak manager] _ in
+            Task { @MainActor in
+                guard let self, let panel, let manager else { return }
+                await self.sample(panel: panel, manager: manager)
+            }
+        }
+        timer?.tolerance = 5
+        Task { await sample(panel: panel, manager: manager) }
     }
 
-    private func displayNSFont(for manager: TimerManager) -> NSFont {
-        let size = manager.fontSize
-        switch manager.displayFont {
-        case .newYork:
-            return NSFont.systemFont(ofSize: size, weight: .semibold)
-        case .sfProHeavy:
-            return NSFont.systemFont(ofSize: size, weight: .semibold)
-        case .impact:
-            return NSFont(name: "Impact", size: size) ?? NSFont.systemFont(ofSize: size, weight: .semibold)
-        case .arialBlack:
-            return NSFont(name: "Arial-BoldMT", size: size) ?? NSFont.systemFont(ofSize: size, weight: .semibold)
+    private func sample(panel: FloatingPanel, manager: TimerManager) async {
+        guard manager.adaptiveColor, panel.isVisible, !busy else { return }
+        guard CGPreflightScreenCaptureAccess() else {
+            manager.adaptiveStatus = "Enable Screen Recording in System Settings, then relaunch"
+            return
+        }
+        busy = true
+        defer { busy = false }
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            guard let screen = panel.screen,
+                  let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? UInt32,
+                  let display = content.displays.first(where: { $0.displayID == id }) else { return }
+            let excluded = content.windows.filter { $0.owningApplication?.processID == ProcessInfo.processInfo.processIdentifier }
+            let filter = SCContentFilter(display: display, excludingWindows: excluded)
+            let config = SCStreamConfiguration()
+            config.width = 16
+            config.height = 16
+            config.showsCursor = false
+            let sampledFrame = panel.frame
+            let frame = sampledFrame.intersection(screen.frame)
+            guard !frame.isEmpty else { return }
+            config.sourceRect = CGRect(x: frame.minX - screen.frame.minX,
+                                       y: screen.frame.maxY - frame.maxY,
+                                       width: frame.width, height: frame.height)
+            let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            guard manager.adaptiveColor, panel.isVisible, panel.frame == sampledFrame else { return }
+            var pixels = [UInt8](repeating: 0, count: 16 * 16 * 4)
+            let rendered = pixels.withUnsafeMutableBytes { buffer -> Bool in
+                guard let ctx = CGContext(data: buffer.baseAddress, width: 16, height: 16, bitsPerComponent: 8,
+                                          bytesPerRow: 64, space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+                ctx.draw(image, in: CGRect(x: 0, y: 0, width: 16, height: 16))
+                return true
+            }
+            guard rendered else { return }
+            let now = Date()
+            if lastOrigin != panel.frame.origin {
+                samples.removeAll()
+                lastSwitch = .distantPast
+                lastOrigin = panel.frame.origin
+            }
+            let luminance = stride(from: 0, to: pixels.count, by: 4).reduce(0.0) { sum, i in
+                func linear(_ v: UInt8) -> Double {
+                    let c = Double(v) / 255
+                    return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+                }
+                return sum + 0.2126 * linear(pixels[i]) + 0.7152 * linear(pixels[i+1]) + 0.0722 * linear(pixels[i+2])
+            } / 256
+            samples.append((now, luminance))
+            samples.removeAll { now.timeIntervalSince($0.0) > 300 }
+            let sorted = samples.map { $0.1 }.sorted()
+            let median = sorted[sorted.count / 2]
+            if now.timeIntervalSince(lastSwitch) >= 120 {
+                let dark = manager.adaptiveDarkBackground ? median < 0.40 : median < 0.20
+                if dark != manager.adaptiveDarkBackground {
+                    manager.adaptiveDarkBackground = dark
+                    lastSwitch = now
+                }
+            }
+            manager.adaptiveStatus = "Learning · 5 minute history"
+        } catch {
+            manager.adaptiveStatus = "Sampling unavailable · using protected palette"
         }
     }
 }

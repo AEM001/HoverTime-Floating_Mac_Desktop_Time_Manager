@@ -3,64 +3,93 @@
 //  HoverTime
 //
 
-import SwiftUI
+import AppKit
 
-struct MenuBarView: View {
-    @ObservedObject var manager: TimerManager
-    var appDelegate: AppDelegate
+/// Keep native menu identities stable throughout AppKit's tracking loop.
+/// Timer ticks update the floating display, never rebuild an open submenu.
+final class MenuBarController: NSObject, NSMenuDelegate {
+    private let manager: TimerManager
+    private weak var appDelegate: AppDelegate?
+    private let statusItem: NSStatusItem
+    private let menu = NSMenu()
+    private let modeMenu = NSMenu(title: "Mode")
+    private var visibilityItem: NSMenuItem!
+    private var clickThroughItem: NSMenuItem!
+    private var startItem: NSMenuItem!
+    private var resetItem: NSMenuItem!
+    private var timerSeparator: NSMenuItem!
 
-    var body: some View {
-        Button(appDelegate.panel?.isVisible == true ? "Hide Timer" : "Show Timer") {
-            appDelegate.togglePanel()
+    init(manager: TimerManager, appDelegate: AppDelegate) {
+        self.manager = manager
+        self.appDelegate = appDelegate
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        super.init()
+
+        statusItem.button?.image = NSImage(systemSymbolName: "clock", accessibilityDescription: "HoverTime")
+        statusItem.button?.toolTip = "HoverTime"
+        menu.autoenablesItems = false
+        menu.delegate = self
+        visibilityItem = addItem("Hide Timer", action: #selector(togglePanel), key: "h")
+        addItem("Recenter at Top", action: #selector(recenter), key: "c")
+        menu.addItem(.separator())
+
+        let modeItem = menu.addItem(withTitle: "Mode", action: nil, keyEquivalent: "")
+        modeMenu.autoenablesItems = false
+        for mode in TimeMode.allCases {
+            let item = NSMenuItem(title: mode.rawValue, action: #selector(selectMode(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = mode.rawValue
+            modeMenu.addItem(item)
         }
-        .keyboardShortcut("h")
-        .onAppear {
-            appDelegate.setupPanel(with: manager)
-        }
-
-        // Snap the floating timer to top-center, just below the menu bar,
-        // whether it's currently hidden or just off-screen.
-        Button("Recenter at Top") {
-            appDelegate.showPanelAtTopCenter(manager: manager)
-        }
-        .keyboardShortcut("c")
-
-        Divider()
-
-        if manager.mode != .clock {
-            Button(isRunning ? "Pause" : "Start") {
-                manager.toggleStartPause()
-            }
-            .keyboardShortcut("p")
-
-            Button("Reset") {
-                manager.resetCurrent()
-            }
-            .keyboardShortcut("r")
-
-            Divider()
-        }
-
-        Button("Open HoverTime Desktop Timer...") {
-            appDelegate.openSettingsWindow()
-        }
-        .keyboardShortcut(",")
-
-        Divider()
-
-        Button("Quit HoverTime") {
-            manager.saveSettings()
-            appDelegate.panel?.savePosition()
-            NSApp.terminate(nil)
-        }
-        .keyboardShortcut("q")
+        modeItem.submenu = modeMenu
+        clickThroughItem = addItem("Click-through (disable to drag)", action: #selector(toggleClickThrough))
+        menu.addItem(.separator())
+        startItem = addItem("Start", action: #selector(toggleTimer), key: "p")
+        resetItem = addItem("Reset", action: #selector(resetTimer), key: "r")
+        timerSeparator = .separator()
+        menu.addItem(timerSeparator)
+        addItem("Settings…", action: #selector(openSettings), key: ",")
+        menu.addItem(.separator())
+        addItem("Quit HoverTime", action: #selector(quit), key: "q")
+        statusItem.menu = menu
     }
 
-    private var isRunning: Bool {
-        switch manager.mode {
-        case .clock: return false
-        case .countdown: return manager.countdownRunning
-        case .stopwatch: return manager.stopwatchRunning
-        }
+    @discardableResult
+    private func addItem(_ title: String, action: Selector, key: String = "") -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.target = self
+        menu.addItem(item)
+        return item
     }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        visibilityItem.title = appDelegate?.panel?.isVisible == true ? "Hide Timer" : "Show Timer"
+        clickThroughItem.state = manager.clickThrough ? .on : .off
+        for item in modeMenu.items {
+            item.state = (item.representedObject as? String) == manager.mode.rawValue ? .on : .off
+        }
+        let isClock = manager.mode == .clock
+        let isRunning = manager.mode == .countdown ? manager.countdownRunning : manager.stopwatchRunning
+        startItem.title = isRunning ? "Pause" : "Start"
+        startItem.isHidden = isClock
+        resetItem.isHidden = isClock
+        timerSeparator.isHidden = isClock
+    }
+
+    @objc private func selectMode(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let mode = TimeMode(rawValue: raw) else { return }
+        manager.mode = mode
+        manager.saveSettings()
+    }
+
+    @objc private func togglePanel() { appDelegate?.togglePanel() }
+    @objc private func recenter() { appDelegate?.showPanelAtTopCenter(manager: manager) }
+    @objc private func toggleClickThrough() {
+        manager.clickThrough.toggle()
+        manager.saveSettings()
+    }
+    @objc private func toggleTimer() { manager.toggleStartPause() }
+    @objc private func resetTimer() { manager.resetCurrent() }
+    @objc private func openSettings() { appDelegate?.openSettingsWindow() }
+    @objc private func quit() { NSApp.terminate(nil) }
 }

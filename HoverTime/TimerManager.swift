@@ -15,13 +15,20 @@ enum TimeMode: String, CaseIterable {
 }
 
 enum DisplayColor: String, CaseIterable {
+    case ink = "Ink"
     case porcelain = "Porcelain"
     case graphite = "Graphite"
     case sage = "Sage"
     case frost = "Frost"
 }
 
+enum DisplayRendering: String, CaseIterable {
+    case solid = "Solid"
+    case outline = "Outline"
+}
+
 enum DisplayFont: String, CaseIterable {
+    case sfProRounded = "SF Pro Rounded"
     case newYork = "New York"
     case sfProHeavy = "SF Pro Heavy"
     case impact = "Impact"
@@ -46,6 +53,32 @@ class TimerManager: ObservableObject {
     // MARK: - Clock
     @Published var currentTime: Date = Date()
     @Published var use24Hour: Bool = true
+    @Published var utcOffsetMinutes: Int? = nil {
+        didSet {
+            if let offset = utcOffsetMinutes {
+                UserDefaults.standard.set(offset, forKey: "utcOffsetMinutes")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "utcOffsetMinutes")
+            }
+            rescheduleReminder()
+        }
+    }
+
+    static let utcOffsets = Array(stride(from: -720, through: 840, by: 15))
+
+    static func utcOffsetTitle(_ minutes: Int) -> String {
+        let magnitude = abs(minutes)
+        return String(format: "UTC%@%02d:%02d", minutes < 0 ? "−" : "+", magnitude / 60, magnitude % 60)
+    }
+
+    var clockTimeZone: TimeZone {
+        guard let offset = utcOffsetMinutes,
+              Self.utcOffsets.contains(offset),
+              let zone = TimeZone(secondsFromGMT: offset * 60) else {
+            return .autoupdatingCurrent
+        }
+        return zone
+    }
     @Published var showSeconds: Bool = true
     @Published var showDate: Bool = false
 
@@ -65,8 +98,13 @@ class TimerManager: ObservableObject {
     @Published var windowOpacity: Double = 1.0
     @Published var showShadow: Bool = false
     @Published var clickThrough: Bool = false
-    @Published var displayColor: DisplayColor = .sage
-    @Published var displayFont: DisplayFont = .newYork
+    @Published var adaptiveColor = false
+    @Published var adaptiveDarkBackground = false
+    @Published var adaptiveStatus = "Off"
+    @Published var showBackdrop = true
+    @Published var displayColor: DisplayColor = .ink
+    @Published var displayRendering: DisplayRendering = .solid
+    @Published var displayFont: DisplayFont = .sfProRounded
 
     // MARK: - Sound
     @Published var soundEnabled: Bool = true
@@ -87,11 +125,12 @@ class TimerManager: ObservableObject {
     private var lastCountdownWholeSeconds: Int?
     private var lastStopwatchWholeSeconds: Int?
     private var nextReminderDate: Date?
+    private let clockFormatter = DateFormatter()
+    private let dateFormatter = DateFormatter()
 
     private init() {
         loadSettings()
         startDisplayTimer()
-        requestNotificationPermission()
     }
 
     deinit {
@@ -122,7 +161,8 @@ class TimerManager: ObservableObject {
     // MARK: - Clock
 
     var clockDisplayString: String {
-        let formatter = DateFormatter()
+        let formatter = clockFormatter
+        formatter.timeZone = clockTimeZone
         if use24Hour {
             formatter.dateFormat = showSeconds ? "HH:mm:ss" : "HH:mm"
         } else {
@@ -132,7 +172,8 @@ class TimerManager: ObservableObject {
     }
 
     var dateDisplayString: String {
-        let formatter = DateFormatter()
+        let formatter = dateFormatter
+        formatter.timeZone = clockTimeZone
         formatter.dateFormat = "E, MMM d"
         return formatter.string(from: currentTime)
     }
@@ -140,6 +181,8 @@ class TimerManager: ObservableObject {
     // MARK: - Countdown
 
     func startCountdown() {
+        guard !countdownRunning else { return }
+        requestNotificationPermission()
         if stopwatchRunning {
             pauseStopwatch()
         }
@@ -156,7 +199,9 @@ class TimerManager: ObservableObject {
     }
 
     func pauseCountdown() {
+        guard countdownRunning else { return }
         updateCountdown(now: Date())
+        guard countdownRunning else { return }
         countdownRunning = false
         countdownPaused = true
         countdownEndDate = nil
@@ -174,7 +219,8 @@ class TimerManager: ObservableObject {
     }
 
     func setCountdownPreset(_ minutes: Int) {
-        countdownTotal = TimeInterval(minutes * 60)
+        guard !countdownRunning else { return }
+        countdownTotal = TimeInterval(min(1439, max(1, minutes)) * 60)
         resetCountdown()
     }
 
@@ -193,17 +239,13 @@ class TimerManager: ObservableObject {
     }
 
     private func countdownFinished() {
-        countdownEndDate = nil
-        lastCountdownWholeSeconds = nil
-        countdownRunning = false
-        countdownPaused = false
+        // Return to the configured duration immediately, including when the
+        // countdown expires while the menu is tracking or the Mac is asleep.
+        resetCountdown()
         playSound()
         sendNotification(title: "Countdown Complete", body: "Your timer has finished!")
-        if reminderEnabled { rescheduleReminder() }
         if countdownAutoRepeat {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-                self?.startCountdown()
-            }
+            startCountdown()
         }
     }
 
@@ -315,7 +357,8 @@ class TimerManager: ObservableObject {
     /// Returns the next wall-clock boundary at a multiple of `interval`.
     /// e.g. interval=5min -> :00, :05, :10, :15, ...
     private func nextWallClockReminder(after date: Date, interval: TimeInterval) -> Date {
-        let calendar = Calendar.current
+        var calendar = Calendar.current
+        calendar.timeZone = clockTimeZone
         let unit: Calendar.Component = interval <= 3600 ? .hour : .day
         guard let periodStart = calendar.dateInterval(of: unit, for: date)?.start else {
             return date.addingTimeInterval(interval)
@@ -345,9 +388,6 @@ class TimerManager: ObservableObject {
         // Keep the next fire time aligned to the active timer's anchor.
         // When no timer is running, fall back to wall-clock boundaries.
         if nextReminderDate == nil {
-            rescheduleReminder(from: now)
-        } else if let scheduled = nextReminderDate, scheduled < now {
-            // We missed a fire (e.g. timer was paused); recompute from now.
             rescheduleReminder(from: now)
         }
 
@@ -428,7 +468,6 @@ class TimerManager: ObservableObject {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        content.sound = .default
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }
@@ -448,7 +487,10 @@ class TimerManager: ObservableObject {
         d.set(countdownAutoRepeat, forKey: "countdownAutoRepeat")
         d.set(countdownTotal, forKey: "countdownTotal")
         d.set(mode.rawValue, forKey: "timeMode")
+        d.set(adaptiveColor, forKey: "adaptiveColor")
+        d.set(showBackdrop, forKey: "showBackdrop")
         d.set(displayColor.rawValue, forKey: "displayColor")
+        d.set(displayRendering.rawValue, forKey: "displayRendering")
         d.set(displayFont.rawValue, forKey: "displayFont")
         d.set(reminderEnabled, forKey: "reminderEnabled")
         d.set(reminderIntervalMinutes, forKey: "reminderIntervalMinutes")
@@ -457,12 +499,18 @@ class TimerManager: ObservableObject {
 
     private func loadSettings() {
         let d = UserDefaults.standard
+        adaptiveColor = d.bool(forKey: "adaptiveColor")
+        showBackdrop = d.object(forKey: "showBackdrop") == nil ? true : d.bool(forKey: "showBackdrop")
+        if d.object(forKey: "utcOffsetMinutes") != nil {
+            let offset = d.integer(forKey: "utcOffsetMinutes")
+            utcOffsetMinutes = Self.utcOffsets.contains(offset) ? offset : nil
+        }
         if d.object(forKey: "use24Hour") != nil {
             use24Hour = d.bool(forKey: "use24Hour")
             showSeconds = d.bool(forKey: "showSeconds")
             showDate = d.bool(forKey: "showDate")
             fontSize = CGFloat(d.double(forKey: "fontSize"))
-            windowOpacity = d.double(forKey: "windowOpacity")
+        windowOpacity = min(1, max(0.3, d.double(forKey: "windowOpacity")))
             showShadow = d.bool(forKey: "showShadow")
             clickThrough = d.bool(forKey: "clickThrough")
             soundEnabled = d.bool(forKey: "soundEnabled")
@@ -496,7 +544,21 @@ class TimerManager: ObservableObject {
             if countdownTotal <= 0 { countdownTotal = 25 * 60; countdownRemaining = countdownTotal }
             if reminderIntervalMinutes < 1 { reminderIntervalMinutes = 5 }
         }
+        if let raw = d.string(forKey: "displayRendering"), let rendering = DisplayRendering(rawValue: raw) {
+            displayRendering = rendering
+        }
         fontSize = roundedFontSize(fontSize)
+        // Upgrade the old default pairing without replacing other chosen styles.
+        if d.integer(forKey: "appearanceVersion") < 3 {
+            if (displayColor == .sage && displayFont == .newYork) ||
+                (displayColor == .porcelain && displayFont == .sfProRounded) {
+                displayColor = .ink
+                displayFont = .sfProRounded
+            }
+            d.set(displayColor.rawValue, forKey: "displayColor")
+            d.set(displayFont.rawValue, forKey: "displayFont")
+            d.set(3, forKey: "appearanceVersion")
+        }
         countdownTotal = roundedCountdownDuration(countdownTotal)
         countdownRemaining = countdownTotal
         rescheduleReminder()

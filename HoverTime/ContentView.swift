@@ -6,210 +6,166 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Main ContentView (floating display only)
+extension DisplayColor {
+    var nsColor: NSColor {
+        adaptiveColor(dark: false)
+    }
+    func adaptiveColor(dark: Bool) -> NSColor {
+        let rgb: (CGFloat, CGFloat, CGFloat)
+        switch self {
+        case .ink: rgb = dark ? (0.78, 0.86, 1.0) : (0.16, 0.23, 0.36)
+        case .porcelain: rgb = dark ? (1.0, 0.91, 0.75) : (0.39, 0.27, 0.16)
+        case .graphite: rgb = dark ? (0.88, 0.82, 0.97) : (0.31, 0.24, 0.40)
+        case .sage: rgb = dark ? (0.73, 0.91, 0.83) : (0.16, 0.32, 0.28)
+        case .frost: rgb = dark ? (0.73, 0.91, 0.97) : (0.14, 0.31, 0.40)
+        }
+        return NSColor(srgbRed: rgb.0, green: rgb.1, blue: rgb.2, alpha: 1)
+    }
+    var title: String {
+        switch self {
+        case .ink: return "Harbor"
+        case .porcelain: return "Amber"
+        case .graphite: return "Iris"
+        case .sage: return "Pine"
+        case .frost: return "Lagoon"
+        }
+    }
+
+    var color: Color { Color(nsColor: nsColor) }
+}
+
+/// AppKit draws a true glyph outline: positive strokeWidth leaves the centers
+/// transparent. The exact same font metrics size the view and its NSPanel.
+private struct TimeGlyphRun {
+    let text: String
+    let font: NSFont
+    let color: NSColor
+    var outlined = false
+    var edge: NSColor? = nil
+
+    var attributedString: NSAttributedString {
+        var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+        if outlined {
+            attributes[.strokeColor] = color
+            attributes[.strokeWidth] = 1.4
+        }
+        if !outlined, let edge {
+            attributes[.strokeColor] = edge
+            attributes[.strokeWidth] = -1.0
+        }
+        return NSAttributedString(string: text, attributes: attributes)
+    }
+
+    var size: NSSize {
+        let measured = attributedString.size()
+        return NSSize(width: ceil(measured.width) + 4, height: ceil(measured.height) + 4)
+    }
+}
+
+private final class TimeGlyphView: NSView {
+    var run: TimeGlyphRun? { didSet { needsDisplay = true } }
+    override var isOpaque: Bool { false }
+    override func draw(_ dirtyRect: NSRect) {
+        run?.attributedString.draw(at: NSPoint(x: 2, y: 2))
+    }
+}
+
+private struct TimeGlyphs: NSViewRepresentable {
+    let run: TimeGlyphRun
+    func makeNSView(context: Context) -> TimeGlyphView { TimeGlyphView() }
+    func updateNSView(_ nsView: TimeGlyphView, context: Context) { nsView.run = run }
+}
 
 struct ContentView: View {
     @ObservedObject var manager: TimerManager
 
+    private var isDark: Bool { manager.adaptiveColor && manager.adaptiveDarkBackground }
+    private var foreground: NSColor { manager.displayColor.adaptiveColor(dark: isDark) }
+    private var surface: Color {
+        isDark ? Color(red: 0.10, green: 0.14, blue: 0.21) : Color(red: 0.96, green: 0.97, blue: 0.99)
+    }
+    private var timeRun: TimeGlyphRun {
+        TimeGlyphRun(text: displayText, font: timeFont, color: foreground,
+                     outlined: manager.displayRendering == .outline,
+                     edge: isDark ? NSColor(srgbRed: 0.10, green: 0.14, blue: 0.21, alpha: 0.9) : NSColor.white.withAlphaComponent(0.9))
+    }
+    private var dateRun: TimeGlyphRun {
+        TimeGlyphRun(text: manager.dateDisplayString,
+                     font: .systemFont(ofSize: max(10, manager.fontSize * 0.21), weight: .medium),
+                     color: foreground.withAlphaComponent(0.72))
+    }
+    private var reminderRun: TimeGlyphRun {
+        TimeGlyphRun(text: "LOOK UP · REST YOUR EYES", font: .systemFont(ofSize: max(9, manager.fontSize * 0.16), weight: .semibold),
+                     color: foreground)
+    }
+    private var showsDate: Bool { manager.mode == .clock && manager.showDate }
+
+    /// Independent of the hosting view's previous frame, so shrinking the font
+    /// or hiding seconds shrinks the actual window and its mouse hit area too.
+    var displaySize: NSSize {
+        let time = timeRun.size
+        let date = showsDate ? dateRun.size : .zero
+        let reminder = manager.reminderIsActive ? reminderRun.size : .zero
+        return NSSize(width: max(time.width, date.width, reminder.width) + 12,
+                      height: time.height + date.height + reminder.height + 8)
+    }
+
     var body: some View {
-        VStack(spacing: manager.reminderIsActive ? 4 : 2) {
-            if manager.reminderIsActive {
-                HStack(spacing: 6) {
-                    Image(systemName: "eye.fill")
-                        .font(.system(size: 12, weight: .bold))
-                    Text("LOOK UP")
-                        .font(.system(size: 12, weight: .black, design: .rounded))
+        VStack(spacing: 0) {
+            if manager.reminderIsActive { glyphs(reminderRun) }
+            glyphs(timeRun)
+            if showsDate { glyphs(dateRun) }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .frame(width: displaySize.width, height: displaySize.height)
+        // Imperceptible alpha retains a draggable hit surface in a clear NSPanel.
+         .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(manager.showBackdrop ? surface.opacity(0.92) : Color.black.opacity(0.001))
+                .overlay {
+                    if manager.showBackdrop {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color(nsColor: foreground).opacity(0.18), lineWidth: 1)
+                    }
                 }
-                .foregroundStyle(.black.opacity(0.82))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 3)
-                .background(
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.65),
-                                    reminderColor,
-                                    reminderColor.opacity(0.92)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(Color.white.opacity(0.75), lineWidth: 0.7)
-                        )
-                        .shadow(color: reminderColor.opacity(0.45), radius: 6, x: 0, y: 1)
-                )
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-
-            switch manager.mode {
-            case .clock:     clockView
-            case .countdown: countdownView
-            case .stopwatch: stopwatchView
-            }
         }
-        .padding(.horizontal, manager.reminderIsActive ? 18 : 12)
-        .padding(.vertical, manager.reminderIsActive ? 8 : 4)
-        .background(panelBackground)
-        .overlay(reminderOverlay)
         .contentShape(Rectangle())
-        .background(Color.black.opacity(0.001))
-        .scaleEffect(manager.reminderIsActive ? 1.08 : 1)
-        .animation(.easeInOut(duration: 0.48).repeatCount(8, autoreverses: true), value: manager.reminderPulseID)
-        .animation(.easeOut(duration: 0.2), value: manager.reminderIsActive)
         .fixedSize()
-    }
-
-    // MARK: - Color & Font Helpers
-
-    var tintColor: Color {
-        switch manager.displayColor {
-        case .porcelain: return Color(red: 0.92, green: 0.90, blue: 0.84)
-        case .graphite: return Color(red: 0.76, green: 0.78, blue: 0.76)
-        case .sage: return Color(red: 0.68, green: 0.76, blue: 0.67)
-        case .frost: return Color(red: 0.62, green: 0.74, blue: 0.82)
+        .help("Drag to move · Click for controls")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(manager.mode.rawValue): \(displayText)")
+        .accessibilityAction(named: "Open controls") {
+            (NSApp.delegate as? AppDelegate)?.toggleCompactControls()
         }
     }
 
-    private var glowColor: Color { tintColor.opacity(0.22) }
-    private var reminderColor: Color { Color(red: 1.0, green: 0.80, blue: 0.18) }
-
-    private var panelBackground: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.black.opacity(manager.showShadow ? 0.055 : 0.025))
-
-            if manager.showShadow {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(.regularMaterial)
-                    .opacity(0.72)
-            }
-
-            // Liquid glass specular highlight: a soft white sheen along the top edge.
-            RoundedRectangle(cornerRadius: 10)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.18),
-                            Color.white.opacity(0.04),
-                            Color.clear
-                        ],
-                        startPoint: .top,
-                        endPoint: .center
-                    )
-                )
-                .mask(
-                    RoundedRectangle(cornerRadius: 10)
-                        .padding(.horizontal, 0.5)
-                )
-
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.8)
-
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.black.opacity(0.10), lineWidth: 0.8)
-                .blendMode(.multiply)
-        }
-        .shadow(color: Color.black.opacity(0.16), radius: 10, x: 0, y: 2)
-        .shadow(color: Color.white.opacity(0.14), radius: 5, x: 0, y: 0)
+    private func glyphs(_ run: TimeGlyphRun) -> some View {
+        TimeGlyphs(run: run)
+            .frame(width: run.size.width, height: run.size.height)
+            .shadow(color: manager.showShadow ? .black.opacity(0.15) : .clear, radius: 2, y: 1)
     }
 
-    @ViewBuilder
-    private var reminderOverlay: some View {
-        if manager.reminderIsActive {
-            ZStack {
-                // Warm golden wash layered under the glass for a liquid-glass glow.
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(
-                        LinearGradient(
-                            stops: [
-                                .init(color: reminderColor.opacity(0.08), location: 0.0),
-                                .init(color: reminderColor.opacity(0.22), location: 0.5),
-                                .init(color: reminderColor.opacity(0.06), location: 1.0)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-
-                // Inner specular stroke to simulate a glassy rim catching the light.
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.85),
-                                reminderColor.opacity(0.95),
-                                Color.white.opacity(0.55),
-                                reminderColor.opacity(0.90)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.6
-                    )
-
-                // Outer accent stroke.
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(reminderColor.opacity(0.55), lineWidth: 0.6)
-                    .blur(radius: 0.3)
-            }
-            .shadow(color: reminderColor.opacity(0.60), radius: 20, x: 0, y: 0)
-            .shadow(color: reminderColor.opacity(0.30), radius: 40, x: 0, y: 0)
-            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+    private var displayText: String {
+        switch manager.mode {
+        case .clock: return manager.clockDisplayString
+        case .countdown: return TimerManager.formatTime(manager.countdownRemaining, showSeconds: manager.showSeconds)
+        case .stopwatch: return manager.stopwatchDisplayString
         }
     }
 
-    func timeFont(size: CGFloat) -> Font {
+    private var timeFont: NSFont {
+        let size = manager.fontSize
+        let base = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .medium)
         switch manager.displayFont {
-        case .newYork:   return .system(size: size, weight: .semibold, design: .serif)
-        case .sfProHeavy: return .system(size: size, weight: .semibold, design: .default)
-        case .impact:    return Font.custom("Impact", size: size)
-        case .arialBlack: return Font.custom("Arial-BoldMT", size: size)
+        case .sfProRounded:
+            return base.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: size) } ?? base
+        case .newYork:
+            return base.fontDescriptor.withDesign(.serif).flatMap { NSFont(descriptor: $0, size: size) } ?? base
+        case .sfProHeavy: return .monospacedDigitSystemFont(ofSize: size, weight: .semibold)
+        case .impact: return NSFont(name: "Impact", size: size) ?? base
+        case .arialBlack: return NSFont(name: "Arial-BoldMT", size: size) ?? base
         }
-    }
-
-    // MARK: - Time display
-
-    /// The enclosing FloatingPanel handles clicks across the whole display.
-    private func timeDisplay(_ text: String) -> some View {
-        Text(text)
-            .font(timeFont(size: manager.fontSize))
-            .foregroundStyle(tintColor)
-            .monospacedDigit()
-        .shadow(color: .white.opacity(0.30), radius: 1.0, x: 0, y: 0)
-        .shadow(color: glowColor, radius: manager.reminderIsActive ? 14 : 5, x: 0, y: 0)
-        .shadow(color: .black.opacity(0.58), radius: 2.0, x: 0, y: 1)
-        .fixedSize()
-    }
-
-    // MARK: - Clock View
-
-    private var clockView: some View {
-        VStack(spacing: 2) {
-            timeDisplay(manager.clockDisplayString)
-            if manager.showDate {
-                Text(manager.dateDisplayString)
-                    .font(timeFont(size: manager.fontSize * 0.3))
-                    .foregroundStyle(tintColor.opacity(0.68))
-                    .shadow(color: .white.opacity(0.22), radius: 0.8, x: 0, y: 0)
-                    .shadow(color: .black.opacity(0.42), radius: 1.5, x: 0, y: 1)
-            }
-        }
-    }
-
-    // MARK: - Countdown View
-
-    private var countdownView: some View {
-        timeDisplay(TimerManager.formatTime(manager.countdownRemaining, showSeconds: manager.showSeconds))
-    }
-
-    // MARK: - Stopwatch View
-
-    private var stopwatchView: some View {
-        timeDisplay(manager.stopwatchDisplayString)
     }
 }
 

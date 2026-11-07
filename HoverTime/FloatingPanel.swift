@@ -9,6 +9,50 @@ import SwiftUI
 class FloatingPanel: NSPanel {
     var clickAction: (() -> Void)?
     private var mouseDownLocation: NSPoint?
+    private var dragOrigin: NSPoint?
+    private var didDrag = false
+
+    override func sendEvent(_ event: NSEvent) {
+        switch event.type {
+        case .leftMouseDown:
+            mouseDownLocation = convertPoint(toScreen: event.locationInWindow)
+            dragOrigin = frame.origin
+            didDrag = false
+        case .leftMouseDragged:
+            guard let start = mouseDownLocation, let origin = dragOrigin else { break }
+            let current = convertPoint(toScreen: event.locationInWindow)
+            let delta = NSPoint(x: current.x - start.x, y: current.y - start.y)
+            if didDrag || hypot(delta.x, delta.y) >= 4 {
+                didDrag = true
+                setFrameOrigin(NSPoint(x: origin.x + delta.x, y: origin.y + delta.y))
+            }
+        case .leftMouseUp:
+            guard mouseDownLocation != nil else { break }
+            mouseDownLocation = nil
+            dragOrigin = nil
+            if didDrag {
+                constrainToScreen()
+                savePosition()
+            } else {
+                clickAction?()
+            }
+        default:
+            super.sendEvent(event)
+        }
+    }
+
+    func constrainToScreen() {
+        let target = NSScreen.screens.max { first, second in
+            let firstIntersection = frame.intersection(first.visibleFrame)
+            let secondIntersection = frame.intersection(second.visibleFrame)
+            return firstIntersection.width * firstIntersection.height < secondIntersection.width * secondIntersection.height
+        }
+        guard let visible = target?.visibleFrame else { return }
+        setFrameOrigin(NSPoint(
+            x: max(visible.minX, min(frame.minX, visible.maxX - frame.width)),
+            y: max(visible.minY, min(frame.minY, visible.maxY - frame.height))
+        ))
+    }
 
     init(contentView: NSView) {
         super.init(
@@ -33,7 +77,7 @@ class FloatingPanel: NSPanel {
 
         // Non-activating: won't steal focus
         hidesOnDeactivate = false
-        isMovableByWindowBackground = true
+        isMovableByWindowBackground = false
 
         // Restore saved position
         restorePosition()
@@ -50,21 +94,6 @@ class FloatingPanel: NSPanel {
     override var canBecomeKey: Bool { !isClickThrough }
     override var canBecomeMain: Bool { false }
 
-    override func mouseDown(with event: NSEvent) {
-        mouseDownLocation = event.locationInWindow
-        super.mouseDown(with: event)
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        let upLocation = event.locationInWindow
-        let downLocation = mouseDownLocation ?? upLocation
-        mouseDownLocation = nil
-        let moved = hypot(upLocation.x - downLocation.x, upLocation.y - downLocation.y)
-        if moved < 4 {
-            clickAction?()
-        }
-        super.mouseUp(with: event)
-    }
 
     // MARK: - Position memory
 
@@ -85,9 +114,4 @@ class FloatingPanel: NSPanel {
         }
     }
 
-    override func mouseDragged(with event: NSEvent) {
-        super.mouseDragged(with: event)
-        // Save position after drag
-        savePosition()
-    }
 }

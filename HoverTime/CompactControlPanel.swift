@@ -40,92 +40,77 @@ final class CompactControlPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
-private struct CompactControlView: View {
+struct CompactControlView: View {
     @ObservedObject var manager: TimerManager
     let closeAction: () -> Void
     let openSettingsAction: () -> Void
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Label("Quick Controls", systemImage: "slider.horizontal.3")
-                    .font(.system(size: 13, weight: .semibold))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("HOVERTIME").font(.system(size: 10, weight: .bold)).tracking(2)
+                    Text("Make room for focus").font(.system(size: 13)).foregroundStyle(.secondary)
+                }
                 Spacer()
-                Button(action: closeAction) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .frame(width: 20, height: 20)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Close quick controls")
+                Button(action: closeAction) { Image(systemName: "xmark").frame(width: 26, height: 26) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Close controls")
             }
-
-            HStack(spacing: 8) {
-                Button(action: manager.cycleMode) {
-                    HStack(spacing: 7) {
-                        Image(systemName: modeIcon)
-                        Text(modeTitle).frame(maxWidth: .infinity, alignment: .leading)
-                        Image(systemName: "chevron.right")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .help("Switch timer mode")
-
-                if manager.mode != .clock {
-                    Button(action: manager.toggleStartPause) {
-                        Label(isRunning ? "Pause" : "Start", systemImage: isRunning ? "pause.fill" : "play.fill")
-                            .frame(width: 80)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
-
-                    Button(action: manager.resetCurrent) {
-                        Image(systemName: "arrow.counterclockwise")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.regular)
-                    .help("Reset")
+            HStack(spacing: 6) {
+                ForEach(TimeMode.allCases, id: \.self) { mode in
+                    Button { manager.mode = mode; manager.saveSettings() } label: {
+                        VStack(spacing: 5) {
+                            Image(systemName: mode == .clock ? "clock" : mode == .countdown ? "timer" : "stopwatch")
+                            Text(mode.rawValue).font(.system(size: 11, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                        .foregroundStyle(manager.mode == mode ? Color.accentColor : Color.secondary)
+                        .background(manager.mode == mode ? Color.accentColor.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+                    }.buttonStyle(.plain)
+                    .accessibilityAddTraits(manager.mode == mode ? .isSelected : [])
                 }
             }
-
-            if manager.mode == .countdown {
-                HStack(spacing: 6) {
-                    presetButton(15, title: "15m")
-                    adjustButton(direction: -1)
-                    presetButton(30, title: "30m")
-                    adjustButton(direction: 1)
-                    presetButton(60, title: "1h")
+            VStack(spacing: 12) {
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(isRunning ? "IN PROGRESS" : modeTitle.uppercased())
+                            .font(.system(size: 9, weight: .bold)).tracking(1.5).foregroundStyle(.secondary)
+                        Text(statusText).font(.system(size: 32, weight: .medium, design: .rounded)).monospacedDigit()
+                    }
+                    Spacer()
+                    if manager.mode != .clock {
+                        Button(action: manager.toggleStartPause) {
+                            Image(systemName: isRunning ? "pause.fill" : "play.fill").frame(width: 26, height: 30)
+                        }.buttonStyle(.borderedProminent).clipShape(Circle()).help(isRunning ? "Pause" : "Start")
+                        Button(action: manager.resetCurrent) { Image(systemName: "arrow.counterclockwise") }
+                            .buttonStyle(.plain).help("Reset")
+                    }
                 }
-            }
-
-            ZStack {
-                Text(statusText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                Button("Full Settings…") {
-                    openSettingsAction()
-                    closeAction()
+                if manager.mode == .countdown {
+                    HStack(spacing: 8) {
+                        presetButton(5, title: "5m")
+                        adjustButton(direction: -1)
+                        presetButton(25, title: "25m")
+                        adjustButton(direction: 1)
+                        presetButton(60, title: "1h")
+                    }
                 }
-                .frame(width: 150)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
+            }.padding(16).background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 16))
+            AppearanceControls(manager: manager)
+            HStack {
+                Label("Drag time to move", systemImage: "hand.draw").font(.system(size: 10)).foregroundStyle(.secondary)
+                Spacer()
+                Button("All settings", systemImage: "slider.horizontal.3") {
+                    openSettingsAction(); closeAction()
+                }.buttonStyle(.plain).font(.system(size: 11, weight: .semibold))
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .frame(width: 300, height: manager.mode == .countdown ? 174 : 132)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.22), lineWidth: 0.8)
-        )
-        .shadow(color: .black.opacity(0.22), radius: 18, y: 6)
+        .padding(22)
+        .frame(width: 380, height: manager.mode == .countdown ? 590 : 550)
+        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(.primary.opacity(0.10), lineWidth: 1))
+        .tint(Color(red: 0.30, green: 0.43, blue: 0.68))
+        .onDisappear { manager.saveSettings() }
     }
 
     private var modeTitle: String {
@@ -187,5 +172,52 @@ private struct CompactControlView: View {
         .buttonStyle(.bordered)
         .controlSize(.small)
         .disabled(manager.countdownRunning || (direction < 0 && manager.countdownTotal <= 5 * 60))
+    }
+}
+
+/// Shared by the quick panel and full settings so appearance stays in sync.
+struct AppearanceControls: View {
+    @ObservedObject var manager: TimerManager
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("APPEARANCE").font(.system(size: 9, weight: .bold)).tracking(1.5).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(Int(manager.fontSize)) pt").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                ForEach(DisplayColor.allCases, id: \.self) { color in
+                    Button { manager.displayColor = color; manager.saveSettings() } label: {
+                        VStack(spacing: 5) {
+                            Circle().fill(color.color).frame(width: 22, height: 22)
+                                .overlay { if manager.displayColor == color { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white) } }
+                            Text(color.title).font(.system(size: 9, weight: .medium))
+                        }.frame(maxWidth: .infinity).padding(.vertical, 7)
+                            .background(manager.displayColor == color ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                    }.buttonStyle(.plain).accessibilityLabel(color.title)
+                    .accessibilityAddTraits(manager.displayColor == color ? .isSelected : [])
+                }
+            }
+            HStack {
+                Image(systemName: "textformat.size.smaller").foregroundStyle(.secondary)
+                Slider(value: $manager.fontSize, in: 40...200, step: 5) { Text("Font size") }
+                Image(systemName: "textformat.size.larger").foregroundStyle(.secondary)
+            }
+            HStack {
+                Text("Typeface").font(.system(size: 12))
+                Spacer()
+                Picker("Typeface", selection: $manager.displayFont) {
+                    ForEach(DisplayFont.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }.labelsHidden().frame(width: 165)
+            }
+            Toggle("Adaptive background", isOn: $manager.adaptiveColor).font(.system(size: 12)).toggleStyle(.switch).controlSize(.mini)
+                .onChange(of: manager.adaptiveColor) { _, enabled in
+                    manager.saveSettings()
+                    if enabled && !CGPreflightScreenCaptureAccess() { CGRequestScreenCaptureAccess() }
+                }
+            Text(manager.adaptiveColor ? manager.adaptiveStatus : "Fixed palette · fine edges keep digits defined")
+                .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2)
+            Toggle("Soft protective backdrop", isOn: $manager.showBackdrop).font(.system(size: 12)).toggleStyle(.switch).controlSize(.mini)
+        }
     }
 }
