@@ -26,6 +26,8 @@ final class CompactControlPanel: NSPanel {
             backing: .buffered,
             defer: false
         )
+        hostingView.sizingOptions = []
+        hostingView.autoresizingMask = [.width, .height]
         contentView = hostingView
         level = .floating
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
@@ -33,7 +35,7 @@ final class CompactControlPanel: NSPanel {
         backgroundColor = .clear
         hasShadow = false
         hidesOnDeactivate = false
-        isMovableByWindowBackground = true
+        isMovableByWindowBackground = false
     }
 
     override var canBecomeKey: Bool { true }
@@ -106,7 +108,7 @@ struct CompactControlView: View {
             }
         }
         .padding(22)
-        .frame(width: 380, height: manager.mode == .countdown ? 590 : 550)
+        .frame(width: 380, height: 630)
         .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(.primary.opacity(0.10), lineWidth: 1))
         .tint(Color(red: 0.30, green: 0.43, blue: 0.68))
@@ -185,12 +187,18 @@ struct AppearanceControls: View {
                 Spacer()
                 Text("\(Int(manager.fontSize)) pt").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
             }
+            Picker("Color tone", selection: $manager.displayTone) {
+                Text("Deep · light backgrounds").tag(DisplayTone.deep)
+                Text("Light · dark backgrounds").tag(DisplayTone.light)
+            }.pickerStyle(.segmented).labelsHidden().disabled(manager.adaptiveColor)
+                .onChange(of: manager.displayTone) { _, _ in manager.saveSettings() }
             HStack(spacing: 8) {
                 ForEach(DisplayColor.allCases, id: \.self) { color in
                     Button { manager.displayColor = color; manager.saveSettings() } label: {
                         VStack(spacing: 5) {
-                            Circle().fill(color.color).frame(width: 22, height: 22)
-                                .overlay { if manager.displayColor == color { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white) } }
+                            Circle().fill(Color(nsColor: color.adaptiveColor(dark: manager.usesLightInk)))
+                                .overlay(Circle().strokeBorder(.primary.opacity(0.18), lineWidth: 1)).frame(width: 22, height: 22)
+                                .overlay { if manager.displayColor == color { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(manager.usesLightInk ? Color(red: 0.12, green: 0.18, blue: 0.28) : .white) } }
                             Text(color.title).font(.system(size: 9, weight: .medium))
                         }.frame(maxWidth: .infinity).padding(.vertical, 7)
                             .background(manager.displayColor == color ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 10))

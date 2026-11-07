@@ -8,6 +8,7 @@ import SwiftUI
 
 class FloatingPanel: NSPanel {
     var clickAction: (() -> Void)?
+    var dragAction: (() -> Void)?
     private var mouseDownLocation: NSPoint?
     private var dragOrigin: NSPoint?
     private var didDrag = false
@@ -23,6 +24,7 @@ class FloatingPanel: NSPanel {
             let current = convertPoint(toScreen: event.locationInWindow)
             let delta = NSPoint(x: current.x - start.x, y: current.y - start.y)
             if didDrag || hypot(delta.x, delta.y) >= 4 {
+                if !didDrag { dragAction?() }
                 didDrag = true
                 setFrameOrigin(NSPoint(x: origin.x + delta.x, y: origin.y + delta.y))
             }

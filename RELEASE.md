@@ -1,5 +1,13 @@
 # Release Notes
 
+## 2026-11-07 follow-up
+
+- Expose manual Deep / Light palette selection, including light blue, cream, lilac, mint and ice cyan. Swatches show the effective tone.
+- Fix size-slider movement feedback: disable HostingView size negotiation for quick controls, keep their frame fixed while editing, and resize the display atomically from its top-left anchor. Only actual pointer dragging dismisses controls.
+- Back off adaptation from 45 seconds to 120 seconds after stable observations. Use a five-minute median, Schmitt thresholds (0.18 / 0.32), 60-second confirmation and 180-second minimum dwell; moving preserves dwell time.
+- Cache content filters for five minutes, skip captures during editing/dragging or while hidden, honor low power mode, and exponentially back off failures to fifteen minutes. One-shot timers allow 15% scheduling tolerance. No image files or continuous capture stream.
+- Linux cross build and scalar policy checks passed (confirmation, hysteresis, dwell, noise, stale history and sampling backoff). No UI or screenshot tests performed.
+
 ## 2026-11-07
 
 - Redesign quick controls with icon mode cards, a larger timer, paired palette swatches, size slider, typeface selection and appearance switches.

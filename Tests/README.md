@@ -30,3 +30,11 @@ Validated 2026-11-05 using the remote macOS toolchain and local execution:
 - Floating display, quick controls and settings render to PNG.
 
 - The actual NSPanel shrinks in width and height with font size and hidden seconds; date text fits.
+
+
+For adaptation logic only, run `bash Tests/run-backdrop-policy-checks.sh`.
+This extracts the production scalar policy, compiles it on Linux with the shared
+macOS cross compiler, and runs its command-line assertions locally. It creates
+no windows, requests no capture permissions and takes no screenshots. Checks
+cover persistence, hysteresis, minimum dwell across moves, stable-input backoff,
+stale history after a visibility gap, and alternating threshold noise.

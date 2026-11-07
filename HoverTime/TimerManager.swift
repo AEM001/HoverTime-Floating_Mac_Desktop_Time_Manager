@@ -22,6 +22,11 @@ enum DisplayColor: String, CaseIterable {
     case frost = "Frost"
 }
 
+enum DisplayTone: String, CaseIterable {
+    case deep = "Deep"
+    case light = "Light"
+}
+
 enum DisplayRendering: String, CaseIterable {
     case solid = "Solid"
     case outline = "Outline"
@@ -98,6 +103,8 @@ class TimerManager: ObservableObject {
     @Published var windowOpacity: Double = 1.0
     @Published var showShadow: Bool = false
     @Published var clickThrough: Bool = false
+    @Published var displayTone: DisplayTone = .deep
+    var usesLightInk: Bool { adaptiveColor ? adaptiveDarkBackground : displayTone == .light }
     @Published var adaptiveColor = false
     @Published var adaptiveDarkBackground = false
     @Published var adaptiveStatus = "Off"
@@ -487,6 +494,7 @@ class TimerManager: ObservableObject {
         d.set(countdownAutoRepeat, forKey: "countdownAutoRepeat")
         d.set(countdownTotal, forKey: "countdownTotal")
         d.set(mode.rawValue, forKey: "timeMode")
+        d.set(displayTone.rawValue, forKey: "displayTone")
         d.set(adaptiveColor, forKey: "adaptiveColor")
         d.set(showBackdrop, forKey: "showBackdrop")
         d.set(displayColor.rawValue, forKey: "displayColor")
@@ -499,6 +507,7 @@ class TimerManager: ObservableObject {
 
     private func loadSettings() {
         let d = UserDefaults.standard
+        displayTone = DisplayTone(rawValue: d.string(forKey: "displayTone") ?? "") ?? .deep
         adaptiveColor = d.bool(forKey: "adaptiveColor")
         showBackdrop = d.object(forKey: "showBackdrop") == nil ? true : d.bool(forKey: "showBackdrop")
         if d.object(forKey: "utcOffsetMinutes") != nil {
